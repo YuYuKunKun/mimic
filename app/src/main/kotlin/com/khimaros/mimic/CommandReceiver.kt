@@ -37,9 +37,10 @@ class CommandReceiver : BroadcastReceiver() {
         // pairing is intent-specific and unauthenticated (it is how a client
         // obtains the token); status is unauthenticated too.
         if (action == Cmd.PAIR) {
-            val token = TokenStore.redeem(ctx, get(Extras.CODE) ?: "", System.currentTimeMillis())
+            val rec = TokenStore.redeem(ctx, get(Extras.CODE) ?: "", System.currentTimeMillis(), get(Extras.LABEL))
                 ?: return AUTH_FAILED to envelope(Commands.Result(false, null, "invalid or expired pairing code"))
-            return OK to envelope(Commands.Result(true, JSONObject().put("token", token), null))
+            val data = JSONObject().put("token", rec.token).put("id", rec.id).put("label", rec.label)
+            return OK to envelope(Commands.Result(true, data, null))
         }
         if (action == Cmd.STATUS) return OK to envelope(Commands.run(ctx, action, get))
 

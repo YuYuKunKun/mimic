@@ -51,16 +51,16 @@
             android:paddingBottom="8dp" />
 
         <Button
-            android:id="@+id/show_creds"
+            android:id="@+id/start_pairing"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/show_creds" />
+            android:text="@string/start_pairing" />
 
         <Button
-            android:id="@+id/clear_paired"
+            android:id="@+id/legacy_token"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/clear_paired" />
+            android:text="@string/legacy_token" />
 
         <TextView
             android:id="@+id/creds"
@@ -71,6 +71,28 @@
             android:fontFamily="monospace"
             android:textIsSelectable="true"
             android:paddingTop="8dp"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/clients_title"
+            android:textColor="@color/fg"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:paddingBottom="8dp" />
+
+        <LinearLayout
+            android:id="@+id/clients"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <Button
+            android:id="@+id/clear_paired"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/clear_paired"
             android:layout_marginBottom="24dp" />
 
         <TextView

@@ -83,6 +83,9 @@ class HostService : Service() {
             "/cli/mimic", "/mimic" -> return serveAsset(out, "mimic", "text/x-shellscript; charset=utf-8")
             "/SKILL.md", "/skill" -> return serveAsset(out, "SKILL.md", "text/markdown; charset=utf-8")
         }
+        // pairing is unauthenticated by design: it is how a client without a token
+        // obtains one, and it only succeeds while a gui-opened window is active.
+        if (req.method == "POST" && req.path == "/pair") return pair(req, out)
         if (!TokenStore.verify(this, req.token())) {
             return respond(out, "401 Unauthorized", error("unauthorized: bad or missing token"))
         }
@@ -118,6 +121,19 @@ class HostService : Service() {
 
     private fun imageMime(format: String?): String =
         if (format == "jpeg" || format == "jpg") "image/jpeg" else "image/png"
+
+    // redeem a one-time code (json body or query) for a fresh per-client token.
+    private fun pair(req: Request, out: OutputStream) {
+        val args = try {
+            if (req.body.isNotBlank()) JSONObject(req.body) else JSONObject()
+        } catch (_: Exception) { JSONObject() }
+        val code = args.optString(Extras.CODE).ifEmpty { req.query[Extras.CODE] ?: "" }
+        val label = args.optString(Extras.LABEL).ifEmpty { req.query[Extras.LABEL] ?: "" }
+        val rec = TokenStore.redeem(this, code, System.currentTimeMillis(), label)
+            ?: return respond(out, "401 Unauthorized", error("invalid or expired pairing code"))
+        val data = JSONObject().put("token", rec.token).put("id", rec.id).put("label", rec.label)
+        respond(out, "200 OK", Commands.Result(true, data, null).toJson().toString())
+    }
 
     // ---- minimal http ----
 

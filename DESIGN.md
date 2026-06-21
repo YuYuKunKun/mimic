@@ -18,12 +18,13 @@ exposed over three independent **surfaces**, each separately toggleable:
 - **HostService** (http + mcp surfaces) -- a foreground service running a token-
   gated http server on `127.0.0.1`. `/v1/<cmd>` is the rest surface; `/mcp` is an
   in-app mcp (json-rpc) endpoint. both share one socket. it also serves a few
-  unauthenticated static routes (`/`, `/cli/mimic`, `/SKILL.md`) from bundled
-  assets so a client can bootstrap or update the cli before it has a token; the
-  assets are copied from the repo root at build time (gradle `syncBootstrap`) so
-  they always match the source.
-- **MainActivity** -- a dark onboarding ui: enable the service, reveal the token,
-  and toggle the three surfaces plus launch-on-boot.
+  unauthenticated routes a client needs before it has a token: the static `/`,
+  `/cli/mimic`, `/SKILL.md` from bundled assets (bootstrap/update), and `POST
+  /pair` (redeem a one-time code for a token). bundled assets are copied from the
+  repo root at build time (gradle `syncBootstrap`) so they always match the source.
+- **MainActivity** -- a dark onboarding ui: enable the service, start pairing or
+  reveal a legacy token, revoke clients, and toggle the three surfaces plus
+  launch-on-boot.
 - **BootReceiver** -- restarts the host surfaces after a reboot when launch-on-
   boot is set; it performs no accessibility action, so it stays enabled.
 
@@ -131,14 +132,20 @@ service in settings, and every command on every surface must carry the secret
 token (the localhost socket is reachable by any local app, so the token, not the
 loopback bind, is the real gate).
 
-`TokenStore` keeps one token in app-private shared preferences (unreadable by
-other apps without root) and compares candidates in constant time. it is obtained
-two ways: copied from the app ui (http/mcp), or via the intents pairing handshake
--- the app shows a time-limited, attempt-limited 6-digit code that the cli
-exchanges for the token (so a long secret need not be typed). showing the
-code/token only mints a token when none exists, so it never silently invalidates
-a working client; "clear paired" forgets the token, rejecting every client until a
-new one is shown.
+`TokenStore` keeps a set of per-client tokens in app-private shared preferences (a
+json array, unreadable by other apps without root) and verifies a candidate in
+constant time against every one. each record carries the secret, a short non-
+secret `id`, a label, a kind, and a creation time.
+
+a client gets a token two ways. **pairing**: the user taps "start pairing", which
+opens a short in-memory window (`PAIRING_WINDOW_MS`) and shows a one-time,
+attempt-limited 6-digit code; redeeming the code -- over any surface, including
+the unauthenticated `POST /pair` so it works from proot/termux where `am` cannot
+return a result -- mints a fresh token and closes the window. **legacy token**:
+the ui mints a long-lived token to paste into clients that cannot pair (mcp
+config). minting outside pairing and revocation are gui-only, so a remote client
+can neither create extra tokens nor revoke peers. the ui lists active clients and
+revokes one by `id` (others keep working) or all at once.
 
 ## clients
 

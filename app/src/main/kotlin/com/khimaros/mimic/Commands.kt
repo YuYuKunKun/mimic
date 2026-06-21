@@ -46,6 +46,8 @@ object Commands {
     fun status(ctx: Context): JSONObject = JSONObject()
         .put("service_enabled", MimicService.isEnabled())
         .put("paired", TokenStore.isPaired(ctx))
+        .put("tokens", TokenStore.count(ctx))
+        .put("pairing", TokenStore.pairingActive(System.currentTimeMillis()))
         .put("intents", AppState.intents(ctx))
         .put("http", AppState.http(ctx))
         .put("mcp", AppState.mcp(ctx))
@@ -92,9 +94,15 @@ object Commands {
         return performed(service.clickNode(node))
     }
 
+    // with a by/query, target the matching node; without one, target whatever node
+    // currently holds input focus.
     private fun setText(service: MimicService, get: (String) -> String?): Result {
         val text = get(Extras.TEXT) ?: return fail("missing text")
-        val node = resolve(service, get) ?: return fail("no node matched query")
+        val node = if (get(Extras.QUERY).isNullOrEmpty()) {
+            service.focusedInput() ?: return fail("no focused input; pass --id/--text to target a field")
+        } else {
+            resolve(service, get) ?: return fail("no node matched query")
+        }
         return performed(service.setNodeText(node, text))
     }
 

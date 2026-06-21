@@ -48,11 +48,28 @@
 - [x] on-device verification: 18/18 e2e pass on a real pixel 8 pro (all surfaces,
       bootstrap, launch, and png+jpeg screenshot)
 
+## milestone 4: per-client tokens, one-time pairing, revocation
+
+- [ ] one-time pairing codes valid only during an explicit, time-boxed pairing
+      window ("start pairing"); no window means every code is rejected
+- [ ] redeeming a code mints a fresh per-client token (id + label), returned over
+      the active transport and stored permanently client-side
+- [ ] cli `pair` works over the active transport (http included), fixing the
+      proot/termux case where `am` cannot return the broadcast result
+- [ ] legacy tokens for manual mcp/other config, minted from the gui (copy-paste)
+- [ ] revoke a specific client token, or all, from the gui (token management is
+      gui-only: minting outside pairing and revocation need physical access)
+- [ ] gui lists active clients (label, id, kind) each with a revoke button
+- [ ] the clients list updates live when a client pairs over http (no reopen)
+- [ ] `mimic text` with no target types into the currently focused field
+- [ ] docs updated (requirements R2/R4, design, readme, skill)
+- [ ] python e2e: pair over http mints a working token, one-time code cannot be
+      reused, an expired window rejects, gui revoke invalidates one token only
+
 ## backlog
 
 - mcp sse / streaming responses and session ids (currently request/response only).
 - optional file-based result delivery for very large intent trees.
 - multi-window / window-list view beyond the active window.
-- per-client tokens; unpair a single client.
 - listing installed packages / a package's launchable activities (dropped for now).
 - gesture paths beyond straight-line swipe (multi-point, pinch).

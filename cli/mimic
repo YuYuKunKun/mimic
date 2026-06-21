@@ -6,6 +6,9 @@
 #               or the host via `adb forward`). preferred when reachable.
 #   intents  -- `am`/`termux-am broadcast` to the receiver, base64 result decode.
 #
+# to get a token: open the app, tap "start pairing", then `mimic pair CODE`. the
+# code is exchanged (over the active surface) for a per-client token saved here.
+#
 # config (env):
 #   MIMIC_TRANSPORT  force "http" or "intents" (default: auto-detect).
 #   MIMIC_HOST       host:port of the rest/mcp server (default 127.0.0.1:8473).
@@ -23,6 +26,7 @@ HOST="${MIMIC_HOST:-127.0.0.1:8473}"
 ADB="${MIMIC_ADB:-adb}"
 MIMIC_HOME="${MIMIC_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/mimic}"
 TOKEN_FILE="$MIMIC_HOME/token"
+ID_FILE="$MIMIC_HOME/id"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -43,7 +47,7 @@ TOKEN=""
 [ -f "$TOKEN_FILE" ] && TOKEN=$(cat "$TOKEN_FILE")
 
 die() { echo "mimic: $*" >&2; exit 1; }
-need_token() { [ -n "$TOKEN" ] || die "no token; run 'mimic pair' (intents) or 'mimic set-token <token>' (http/mcp)"; }
+need_token() { [ -n "$TOKEN" ] || die "no token; start pairing in the app, then 'mimic pair CODE' (or 'mimic set-token TOKEN')"; }
 
 # single-quote an argument for a remote shell (adb shell re-parses its command).
 shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -143,15 +147,23 @@ send_intents() {
 
 cmd_status() {
     [ "$TRANSPORT" = http ] && need_token
+    [ -f "$ID_FILE" ] && echo "mimic: this client id: $(cat "$ID_FILE") (revoke in the app)" >&2
     send STATUS
+}
+
+# persist the token mode 600, plus the client id when known (pairing) or clear a
+# stale id when saving a hand-copied token.
+save_token() {
+    mkdir -p "$MIMIC_HOME"
+    ( umask 077; printf '%s' "$1" > "$TOKEN_FILE" )
+    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+    if [ -n "${2:-}" ]; then ( umask 077; printf '%s' "$2" > "$ID_FILE" ); else rm -f "$ID_FILE"; fi
 }
 
 cmd_set_token() {
     _t="${1:-}"
     [ -n "$_t" ] || { printf 'paste token: ' >&2; read -r _t; }
-    mkdir -p "$MIMIC_HOME"
-    ( umask 077; printf '%s' "$_t" > "$TOKEN_FILE" )
-    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+    save_token "$_t" ""
     echo "mimic: token saved to $TOKEN_FILE"
 }
 
@@ -171,21 +183,40 @@ cmd_update() {
     fi
 }
 
-# pairing is intents-only (the receiver returns the token); for http/mcp copy the
-# token from the app ui into 'mimic set-token'.
+# pair: exchange a one-time code (shown in the app after "start pairing") for a
+# fresh per-client token, over whichever surface is active -- http via the
+# unauthenticated POST /pair, else the PAIR broadcast. saves the token and the
+# client id; the app lists this client by that id and can revoke it.
 cmd_pair() {
     _code="${1:-}"
+    _label="${2:-$(hostname 2>/dev/null || echo cli)}"
     if [ -z "$_code" ]; then printf 'enter pairing code: ' >&2; read -r _code; fi
-    _out=$(run_am_argv broadcast -n "$COMPONENT" -a "${ACT_PREFIX}PAIR" --es code "$_code" 2>/dev/null || true)
-    _dec=$(decode_output "$_out") || return 1
-    case "$_dec" in
+    if [ "$TRANSPORT" = http ]; then
+        _resp=$(pair_http "$_code" "$_label")
+    else
+        _resp=$(pair_intents "$_code" "$_label") || return 1
+    fi
+    case "$_resp" in
         *'"ok":true'*)
-            _token=$(printf '%s' "$_dec" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-            cmd_set_token "$_token" ;;
+            _token=$(printf '%s' "$_resp" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+            _id=$(printf '%s' "$_resp" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+            save_token "$_token" "$_id"
+            echo "mimic: paired as client ${_id:-?}; token saved to $TOKEN_FILE" >&2 ;;
         *)
-            _err=$(printf '%s' "$_dec" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
-            echo "mimic: pairing failed: ${_err:-unknown}" >&2; return 1 ;;
+            _err=$(printf '%s' "$_resp" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+            die "pairing failed: ${_err:-no response (open a pairing window in the app first)}" ;;
     esac
+}
+
+pair_http() {
+    have curl || die "http pairing needs curl"
+    _b="{\"code\":\"$(json_escape "$1")\",\"label\":\"$(json_escape "$2")\"}"
+    curl -sS -H "content-type: application/json" -X POST "http://$HOST/pair" -d "$_b" 2>/dev/null || true
+}
+
+pair_intents() {
+    decode_output "$(run_am_argv broadcast -n "$COMPONENT" -a "${ACT_PREFIX}PAIR" \
+        --es code "$1" --es label "$2" 2>/dev/null || true)"
 }
 
 # view: dump the (filtered) tree.
@@ -287,7 +318,7 @@ cmd_click() {
 
 cmd_text() {
     need_token
-    _value="${1:-}"; [ -n "$_value" ] || die "usage: mimic text VALUE --id ID | --text T [--match M]"
+    _value="${1:-}"; [ -n "$_value" ] || die "usage: mimic text VALUE [--id ID | --text T | --class C | --desc D] [--match M]"
     shift
     _by=; _query=; _match=
     while [ $# -gt 0 ]; do
@@ -300,9 +331,12 @@ cmd_text() {
             *) die "text: unknown option $1" ;;
         esac
     done
-    [ -n "$_query" ] || die "text: a target is required (--id, --text, --class, --desc)"
-    set -- SET_TEXT text "$_value" by "$_by" query "$_query"
-    [ -n "$_match" ] && set -- "$@" match "$_match"
+    set -- SET_TEXT text "$_value"
+    if [ -n "$_query" ]; then
+        set -- "$@" by "$_by" query "$_query"
+        [ -n "$_match" ] && set -- "$@" match "$_match"
+    fi
+    # no target -> the server types into the currently focused field.
     send "$@"
 }
 
@@ -382,9 +416,9 @@ usage() {
 mimic -- drive the mimic service from a shell.
 transport: $TRANSPORT (http host $HOST; intents via $AM)
 
-setup:
-  mimic pair [CODE]           pair over intents; saves the token (cli path)
-  mimic set-token [TOKEN]     save a token copied from the app ui (http/mcp path)
+setup (start pairing in the app first to get a code):
+  mimic pair [CODE] [LABEL]   exchange a one-time code for a per-client token
+  mimic set-token [TOKEN]     save a legacy token revealed in the app (manual path)
   mimic update [DEST]         re-download this script from the host server
   mimic status                service enabled? which surfaces are on?
 
@@ -397,7 +431,8 @@ interact:
   mimic tap X Y [--duration MS]        mimic longpress X Y [--duration MS]
   mimic swipe X1 Y1 X2 Y2 [--duration MS]
   mimic click X Y | --id ID | --text T | --class C | --desc D [--match M]
-  mimic text VALUE --id ID | --text T [--match M]
+  mimic text VALUE [--id ID | --text T | --class C | --desc D] [--match M]
+                  (no target -> types into the currently focused field)
   mimic back | home | recents | notifications
   mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
   mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]

@@ -77,7 +77,10 @@ object Extras {
     // misc
     const val TEXT = "text"            // SET_TEXT payload
     const val NAV = "nav"              // GLOBAL: back | home | recents | notifications
-    const val CODE = "code"            // PAIR: 6-digit pairing code
+    const val CODE = "code"            // PAIR: 6-digit one-time pairing code
+    const val LABEL = "label"          // PAIR: optional client label (e.g. hostname)
+    const val ID = "id"                // a token's short handle (revoke/identify)
+    const val KIND = "kind"            // a token's kind: paired | legacy
 
     // LAUNCH: at least one of these
     const val COMPONENT = "component"  // "pkg/.Activity"
@@ -104,9 +107,16 @@ object Defaults {
     const val SCREENSHOT_QUALITY = 90
     const val SCREENSHOT_FORMAT = "png"
 
-    // pairing
-    const val CODE_TTL_MS = 5 * 60_000L
+    // pairing: an explicit "start pairing" opens a time-boxed window; a code is
+    // valid only inside it, only once, and only for a bounded number of attempts.
+    const val PAIRING_WINDOW_MS = 2 * 60_000L
     const val CODE_ATTEMPTS = 5
+    const val TOKEN_BYTES = 24         // per-client secret
+    const val TOKEN_ID_BYTES = 3       // short handle, 6 hex chars
+
+    // a token's kind, recorded for display and provenance.
+    const val KIND_PAIRED = "paired"   // minted by redeeming a one-time code
+    const val KIND_LEGACY = "legacy"   // minted in the gui for manual config
 }
 
 // the full set of serializable node attributes; the caller may request a subset

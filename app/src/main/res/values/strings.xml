@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">mimic</string>
-    <string name="intro">expose this device\'s screen to local automation. enable the service, reveal the token, then turn on the surfaces you want.</string>
+    <string name="intro">expose this device\'s screen to local automation. enable the service, pair a client (or reveal a token), then turn on the surfaces you want.</string>
     <string name="service_description">exposes window viewing, interaction, and screen capture to local automation via intents and a localhost server. no off-device network, no other data.</string>
 
     <string name="service_state">accessibility service: %1$s</string>
@@ -9,11 +9,19 @@
     <string name="disabled">disabled</string>
     <string name="open_settings">open accessibility settings</string>
 
-    <string name="creds_title">credentials</string>
-    <string name="show_creds">show pairing code + token</string>
-    <string name="clear_paired">clear paired (reset token)</string>
-    <string name="cleared">cleared. all paired clients are now rejected; show the code/token again to re-pair.</string>
-    <string name="creds_fmt">pairing code (cli, 5 min): %1$s\n\ntoken (http/mcp header x-mimic-token):\n%2$s</string>
+    <string name="creds_title">pairing &amp; tokens</string>
+    <string name="start_pairing">start pairing</string>
+    <string name="legacy_token">reveal legacy token</string>
+    <string name="clear_paired">revoke all</string>
+    <string name="cleared">all tokens revoked. every client is now rejected; start pairing or reveal a token to add one.</string>
+    <string name="code_fmt">pairing code (valid %1$d min, one client):\n\n    %2$s\n\non the client run:  mimic pair %2$s</string>
+    <string name="legacy_fmt">legacy token (header x-mimic-token):\n\n%1$s</string>
+
+    <string name="clients_title">paired clients</string>
+    <string name="no_clients">no clients yet. start pairing, or reveal a legacy token for manual config.</string>
+    <string name="client_row_fmt">%1$s  -  %2$s  (%3$s)</string>
+    <string name="revoke">revoke</string>
+    <string name="revoke_desc">revoke %1$s</string>
 
     <string name="surfaces_title">command surfaces</string>
     <string name="sw_intents">intents (broadcast receiver)</string>

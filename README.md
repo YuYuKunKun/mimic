@@ -46,20 +46,28 @@ the app opens to a small dark onboarding screen:
 1. install the apk (`make install`).
 2. open **mimic** and enable the accessibility service when it
    deep-links you to settings.
-3. tap **show pairing code + token** to reveal the credentials.
-4. turn on the surfaces you want (**intents**, **local http**, **mcp**).
+3. turn on the surfaces you want (**intents**, **local http**, **mcp**).
    optionally enable **restart surfaces on boot**.
 
-then connect a client:
+then connect a client. each client gets its own token, listed in the app and
+revocable on its own:
 
-- **cli (intents or http)**: in termux, either `mimic pair` (type the 6-digit
-  code) or `mimic set-token <token>` (paste the revealed token). the cli
-  auto-selects a working transport. don't have the cli yet? with the http surface
-  on, the server hands it out (no token needed):
+- **cli (pairing)**: tap **start pairing** in the app, then in termux run
+  `mimic pair <code>` with the 6-digit code. the code is one-time and valid only
+  while the window is open; pairing works over http too, so it succeeds from
+  proot/native termux where `am` cannot return a result. the minted token is saved
+  at `~/.config/mimic/token`. don't have the cli yet? with the http surface on, the
+  server hands it out (no token needed):
   `curl -s http://127.0.0.1:8473/cli/mimic -o mimic && chmod +x mimic` (and later
   `mimic update`).
-- **mcp client**: point it at `http://127.0.0.1:8473/mcp` with header
-  `x-mimic-token: <token>` (from a host, first `adb forward tcp:8473 tcp:8473`).
+- **mcp client**: tap **reveal legacy token** in the app, then point the client at
+  `http://127.0.0.1:8473/mcp` with header `x-mimic-token: <token>` (from a host,
+  first `adb forward tcp:8473 tcp:8473`). `mimic set-token <token>` saves the same
+  token for the cli.
+
+revoke a client (or all of them) from the app's **paired clients** list at any
+time; minting outside pairing and revocation are gui-only, so they need physical
+access to the phone.
 
 ## use it
 
@@ -92,14 +100,17 @@ agents on keeping context small; the rest/mcp/intent protocols behind it are in
 ## security
 
 two independent gates protect the device: the accessibility service must be
-enabled by you in settings, and every command on every surface must carry the
-secret token. the token is stored in app-private storage (unreadable by other
-apps without root). **clear paired** in the app forgets the token, rejecting every
-client until you reveal a new one.
+enabled by you in settings, and every command on every surface must carry a valid
+token. tokens are per-client and stored in app-private storage (unreadable by
+other apps without root). revoke a single client by its id, or **revoke all**, from
+the app; a revoked client is rejected immediately while the rest keep working.
 
-the localhost socket is reachable by any local app, and the intents receiver is
-exported -- the token is what makes unauthorized attempts fail. treat it as a
-device secret, and turn off surfaces you are not using.
+a token is only mintable from a one-time code during an open pairing window, or in
+the app itself (the legacy token) -- both need physical access, so a remote client
+cannot mint extra tokens or revoke peers. the localhost socket is reachable by any
+local app and the intents receiver is exported, so the token is what makes
+unauthorized attempts fail. treat it as a device secret, and turn off surfaces you
+are not using.
 
 ## license
 

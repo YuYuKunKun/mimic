@@ -114,6 +114,68 @@ def test_http_launch_app(token):
     assert "com.android.settings" in top
 
 
+# ---- pairing and per-client tokens ----
+
+def _wrong_code(code):
+    return ("2" if code[0] != "2" else "1") + code[1:]
+
+
+def test_pair_over_http_mints_token(token):
+    # the fix: a client with no token pairs over http (proot/termux can't return
+    # an `am` broadcast result). the minted token then authenticates.
+    code = adb.start_pairing()
+    s, b = adb.http_pair(code, "pairclient")
+    assert s == 200 and b["ok"], b
+    minted, cid = b["data"]["token"], b["data"]["id"]
+    assert minted and cid
+    s, b = adb.http("POST", "/v1/status", minted)
+    assert s == 200 and b["ok"]
+
+
+def test_pair_code_is_one_time(token):
+    code = adb.start_pairing()
+    s, _ = adb.http_pair(code)
+    assert s == 200
+    s, b = adb.http_pair(code)  # window closed on first redeem
+    assert s == 401 and b["ok"] is False
+
+
+def test_pair_rejects_bad_code(token):
+    code = adb.start_pairing()
+    s, b = adb.http_pair(_wrong_code(code))
+    assert s == 401 and b["ok"] is False
+    s, b = adb.http_pair(code)  # real code still valid after a bad attempt
+    assert s == 200 and b["ok"]
+
+
+def test_pair_appears_in_list_without_reopen(token):
+    # pairing happens over http and never touches the ui; a foreground app must
+    # still show the new client live, without an exit/reopen to force onResume.
+    code = adb.start_pairing()  # leaves the app in the foreground
+    s, b = adb.http_pair(code, "liveclient")
+    assert s == 200, b
+    cid = b["data"]["id"]
+    time.sleep(0.8)  # let the token-store change post back to the ui thread
+    assert adb.node_with(adb.ui(), f"revoke {cid}") is not None, \
+        "paired client did not appear in the list without reopening the app"
+
+
+def test_gui_revoke_invalidates_one_token(token):
+    c1 = adb.start_pairing()
+    s, b = adb.http_pair(c1, "clientone")
+    assert s == 200, b
+    t1, id1 = b["data"]["token"], b["data"]["id"]
+    c2 = adb.start_pairing()
+    s, b = adb.http_pair(c2, "clienttwo")
+    assert s == 200, b
+    t2 = b["data"]["token"]
+    assert adb.http("POST", "/v1/status", t1)[0] == 200
+    assert adb.http("POST", "/v1/status", t2)[0] == 200
+    adb.revoke_in_ui(id1)
+    assert adb.http("POST", "/v1/status", t1)[0] == 401  # revoked
+    assert adb.http("POST", "/v1/status", t2)[0] == 200  # untouched
+
+
 # ---- mcp surface ----
 
 def test_mcp_initialize(token):

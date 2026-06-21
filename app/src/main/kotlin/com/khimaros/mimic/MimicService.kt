@@ -56,6 +56,11 @@ class MimicService : AccessibilityService() {
 
     fun activeRoot(): AccessibilityNodeInfo? = rootInActiveWindow
 
+    // the node holding input focus -- the target when set-text is called without a
+    // query, so text lands in whatever field is currently active.
+    fun focusedInput(): AccessibilityNodeInfo? =
+        activeRoot()?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+
     // ---- interact ----
 
     fun tap(x: Int, y: Int, durationMs: Long): Boolean = dispatchPath(linePath(x, y, x, y), durationMs)

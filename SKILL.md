@@ -14,14 +14,15 @@ available and auto-selects one, so you just run `mimic <command>`.
 
 1. install and open the **mimic** app; enable its accessibility
    service when prompted.
-2. tap **show pairing code + token**, then turn on at least one surface (the
-   **local http** surface is the most portable).
-3. give the cli the token, either way:
+2. turn on at least one surface (the **local http** surface is the most portable).
+3. tap **start pairing** in the app, then pair the cli with the shown code:
    ```
-   mimic pair            # type the 6-digit code shown in the app
-   mimic set-token       # or paste the token shown in the app
+   mimic pair 491431     # one-time code; pairs over http or intents
    ```
-   the token is saved at `~/.config/mimic/token` and used automatically.
+   this mints a per-client token saved at `~/.config/mimic/token` and used
+   automatically. (for a client that cannot pair, tap **reveal legacy token** and
+   `mimic set-token <token>`.) the code is one-time and only valid while the
+   pairing window is open.
 
 check it works:
 ```
@@ -93,7 +94,8 @@ interact (stateless -- targets re-resolve every call):
   mimic longpress  X Y [--duration MS]
   mimic swipe      X1 Y1 X2 Y2 [--duration MS]
   mimic click      X Y | --id ID | --text T | --class C | --desc D [--match M]
-  mimic text       VALUE --id ID | --text T [--match M]
+  mimic text       VALUE [--id ID | --text T | --class C | --desc D] [--match M]
+                   (no target -> types into the currently focused field)
   mimic back | home | recents | notifications
 
 launch an app or activity:
@@ -105,9 +107,9 @@ launch an app or activity:
 screenshot (LAST RESORT -- see below):
   mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
 
-setup:
-  mimic pair [CODE]                     exchange the app's 6-digit code for a token
-  mimic set-token [TOKEN]               save a token copied from the app
+setup (tap "start pairing" in the app first):
+  mimic pair [CODE] [LABEL]             exchange a one-time code for a per-client token
+  mimic set-token [TOKEN]               save a legacy token revealed in the app
   mimic update [DEST]                   re-download this script from the server
 ```
 

@@ -105,7 +105,9 @@ def ensure_switch(label, desired=True):
 
 
 def reveal_token():
-    tap_node(node_with(ui(), "show pairing code"))
+    """reveal a legacy token in the ui (the manual-config path) and return it."""
+    launch()
+    tap_node(node_with(ui(), "reveal legacy token"))
     # the creds field uniquely contains "x-mimic-token"; the token is the only
     # long base64url run in it.
     creds = node_with(ui(), "x-mimic-token")
@@ -113,6 +115,49 @@ def reveal_token():
     m = _TOKEN_RE.search(text or "")
     assert m, f"token not found in ui: {text!r}"
     return m.group(1)
+
+
+def start_pairing():
+    """open a pairing window in the ui and return the one-time code."""
+    launch()
+    tap_node(node_with(ui(), "start pairing"))
+    creds = node_with(ui(), "pairing code")
+    text = creds.get("text") if creds is not None else ""
+    m = _CODE_RE.search(text or "")
+    assert m, f"pairing code not found in ui: {text!r}"
+    return m.group(1)
+
+
+def http_pair(code, label="e2e"):
+    """exchange a one-time code for a per-client token over the unauthenticated
+    POST /pair route. returns (status, json)."""
+    return http("POST", "/pair", "", {"code": code, "label": label})
+
+
+def screen_size():
+    m = re.search(r"(\d+)x(\d+)", shell("wm", "size"))
+    return (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
+
+
+def revoke_in_ui(token_id):
+    """tap the revoke button for a given client id (gui-only token management).
+    http pairing does not touch the ui, so bounce through home to force an
+    onResume that rebuilds the list, then scroll the row into view."""
+    shell("input", "keyevent", "KEYCODE_HOME")
+    time.sleep(0.3)
+    launch()
+    needle = f"revoke {token_id}"
+    w, h = screen_size()
+    for _ in range(8):
+        node = node_with(ui(), needle)
+        if node is not None:
+            l, t, r, b = map(int, re.findall(r"\d+", node.get("bounds")))
+            if 0 <= (t + b) // 2 <= h - 100:  # comfortably on-screen
+                tap_node(node)
+                return
+        shell("input", "swipe", str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.3)), "300")
+        time.sleep(0.4)
+    raise AssertionError(f"revoke button not reachable for client {token_id}")
 
 
 # ---- surfaces ----

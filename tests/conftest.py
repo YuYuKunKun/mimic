@@ -1,5 +1,5 @@
-"""fixtures: require a device, install the apk, enable the service, then reveal
-the token and turn on all three surfaces through the ui."""
+"""fixtures: require a device, install the apk, enable the service, then reveal a
+legacy token and turn on all three surfaces through the ui."""
 
 import adb
 import pytest
@@ -23,7 +23,7 @@ def installed(require_device):
 
 @pytest.fixture(scope="session")
 def token(installed):
-    """reveal the token and enable intents + http + mcp, then forward the port."""
+    """reveal a legacy token and enable intents + http + mcp, then forward the port."""
     tok = adb.reveal_token()
     for label in ("intents", "local http", "mcp server"):
         adb.ensure_switch(label, True)

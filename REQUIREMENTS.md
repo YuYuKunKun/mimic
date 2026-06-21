@@ -37,7 +37,8 @@ as small as the accessibility framework and that local server require.
 
 - R2.1 tap, long press, and swipe by absolute screen coordinates.
 - R2.2 click a node located by text, resource-id, or coordinates.
-- R2.3 set the text of an editable node located by text or resource-id.
+- R2.3 set the text of an editable node located by text or resource-id; with no
+  target given, set the text of the node that currently holds input focus.
 - R2.4 perform global navigation: back, home, recents, notifications.
 - R2.5 interaction is stateless: a target is re-resolved on every call from
   coordinates, text, or resource-id. no reliance on ephemeral node ids that go
@@ -73,17 +74,22 @@ as small as the accessibility framework and that local server require.
 - R4.2 every command on every surface must carry a secret token. requests without
   a valid token are rejected, so other apps on the device cannot read the screen
   or inject input (the localhost socket is reachable by any local app).
-- R4.3 the token can be obtained two ways: copied from the app ui (for the http
-  and mcp surfaces), or via a pairing handshake for the intents cli -- the app
-  shows a short, time-limited, attempt-limited 6-digit code that the client
-  exchanges for the token.
-- R4.4 the token is stored only in app-private storage (unreadable by other apps
-  without root) and compared in constant time. the ui can reveal it for client
-  config.
-- R4.5 the user can clear pairing from the app (forgetting the token), which
-  rejects every paired client until a new token is shown. revealing the
-  code/token again only mints a token when none exists, so it does not silently
-  invalidate working clients.
+- R4.3 tokens are per-client: each client holds its own secret, so one can be
+  revoked without disturbing the others. a client obtains a token two ways:
+  - **pairing**: the user taps "start pairing" in the app, which opens an
+    explicit, time-limited window and shows a one-time, attempt-limited 6-digit
+    code. the client exchanges the code -- over whichever surface is reachable,
+    including http -- for a freshly minted token. the code is valid only inside an
+    open window and only once; outside a window every code is rejected.
+  - **legacy token**: for clients that cannot run the handshake (mcp config and
+    the like), the app can reveal a long-lived token to paste in by hand.
+- R4.4 tokens are stored only in app-private storage (unreadable by other apps
+  without root) and compared in constant time against every issued token.
+- R4.5 the user can revoke a specific client, or all of them, from the app; a
+  revoked client is rejected immediately while the rest keep working. minting a
+  token outside pairing (the legacy token) and all revocation are gui-only, so
+  they require physical access to the device -- a remote client cannot mint extra
+  tokens or revoke peers.
 
 ## R5 clients
 
