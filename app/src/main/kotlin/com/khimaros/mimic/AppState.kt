@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.content.ComponentName
 import android.content.Context
@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 
 // per-surface on/off state, persisted across reboots. three independent surfaces
-// expose the same A11yService core:
+// expose the same MimicService core:
 //   intents -- the broadcast receiver (toggled by enabling/disabling the
 //              CommandReceiver component, so a stopped surface receives nothing).
 //   http    -- the rest endpoint on the localhost HostService.

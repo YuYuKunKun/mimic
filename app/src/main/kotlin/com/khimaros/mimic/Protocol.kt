@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 // the intent protocol: action names and extra keys shared by the receiver and
 // (by documentation) the cli. keeping them in one place is the single source of
@@ -23,7 +23,7 @@ object Cmd {
 }
 
 object Actions {
-    const val PREFIX = "com.khimaros.a11y.action."
+    const val PREFIX = "com.khimaros.mimic.action."
 
     const val DUMP = PREFIX + Cmd.DUMP
     const val FIND = PREFIX + Cmd.FIND
@@ -44,9 +44,9 @@ object Actions {
 object Host {
     const val ADDR = "127.0.0.1"
     const val PORT = 8473
-    const val TOKEN_HEADER = "x-a11y-token"
+    const val TOKEN_HEADER = "x-mimic-token"
     const val MCP_PROTOCOL = "2025-06-18"
-    const val SERVER_NAME = "android-a11y"
+    const val SERVER_NAME = "mimic"
 
     // single source of truth: app/build.gradle.kts defaultConfig.versionName.
     val VERSION: String = BuildConfig.VERSION_NAME

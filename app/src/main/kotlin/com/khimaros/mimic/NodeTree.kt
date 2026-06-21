@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo

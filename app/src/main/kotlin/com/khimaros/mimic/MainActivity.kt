@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.Manifest
 import android.app.Activity
@@ -60,7 +60,7 @@ class MainActivity : Activity() {
         // while its surface prefs stay on; reconcile so opening the app brings
         // the server back up to match the toggles.
         AppState.applyHost(this)
-        val state = getString(if (A11yService.isEnabled()) R.string.enabled else R.string.disabled)
+        val state = getString(if (MimicService.isEnabled()) R.string.enabled else R.string.disabled)
         serviceStatus.text = getString(R.string.service_state, state)
     }
 

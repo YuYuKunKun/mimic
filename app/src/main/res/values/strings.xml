@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">a11y automation</string>
+    <string name="app_name">mimic</string>
     <string name="intro">expose this device\'s screen to local automation. enable the service, reveal the token, then turn on the surfaces you want.</string>
     <string name="service_description">exposes window viewing, interaction, and screen capture to local automation via intents and a localhost server. no off-device network, no other data.</string>
 
@@ -13,7 +13,7 @@
     <string name="show_creds">show pairing code + token</string>
     <string name="clear_paired">clear paired (reset token)</string>
     <string name="cleared">cleared. all paired clients are now rejected; show the code/token again to re-pair.</string>
-    <string name="creds_fmt">pairing code (cli, 5 min): %1$s\n\ntoken (http/mcp header x-a11y-token):\n%2$s</string>
+    <string name="creds_fmt">pairing code (cli, 5 min): %1$s\n\ntoken (http/mcp header x-mimic-token):\n%2$s</string>
 
     <string name="surfaces_title">command surfaces</string>
     <string name="sw_intents">intents (broadcast receiver)</string>

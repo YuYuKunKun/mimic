@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.content.ComponentName
 import android.content.Context
@@ -36,7 +36,7 @@ object Commands {
     fun run(ctx: Context, action: String, get: (String) -> String?): Result = try {
         when (action) {
             Cmd.STATUS -> ok(status(ctx))
-            Cmd.LAUNCH -> launch(ctx, get)   // launching does not need the a11y service
+            Cmd.LAUNCH -> launch(ctx, get)   // launching does not need the mimic service
             else -> withService { service -> dispatch(service, action, get) }
         }
     } catch (e: IllegalArgumentException) {
@@ -44,19 +44,19 @@ object Commands {
     }
 
     fun status(ctx: Context): JSONObject = JSONObject()
-        .put("service_enabled", A11yService.isEnabled())
+        .put("service_enabled", MimicService.isEnabled())
         .put("paired", TokenStore.isPaired(ctx))
         .put("intents", AppState.intents(ctx))
         .put("http", AppState.http(ctx))
         .put("mcp", AppState.mcp(ctx))
         .put("port", Host.PORT)
 
-    private inline fun withService(block: (A11yService) -> Result): Result {
-        val service = A11yService.instance ?: return fail("accessibility service not enabled")
+    private inline fun withService(block: (MimicService) -> Result): Result {
+        val service = MimicService.instance ?: return fail("accessibility service not enabled")
         return block(service)
     }
 
-    private fun dispatch(service: A11yService, action: String, get: (String) -> String?): Result = when (action) {
+    private fun dispatch(service: MimicService, action: String, get: (String) -> String?): Result = when (action) {
         Cmd.DUMP, Cmd.FIND -> view(service, action, get)
         Cmd.TAP -> performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS)))
         Cmd.LONG_PRESS -> performed(service.longPress(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.LONG_PRESS_DURATION_MS)))
@@ -68,7 +68,7 @@ object Commands {
         else -> fail("unknown command: $action")
     }
 
-    private fun screenshot(service: A11yService, get: (String) -> String?): Result {
+    private fun screenshot(service: MimicService, get: (String) -> String?): Result {
         val format = get(Extras.FORMAT) ?: Defaults.SCREENSHOT_FORMAT
         val quality = get(Extras.QUALITY)?.toIntOrNull() ?: Defaults.SCREENSHOT_QUALITY
         val scale = get(Extras.SCALE)?.toDoubleOrNull() ?: 1.0
@@ -77,7 +77,7 @@ object Commands {
         return ok(bytes)
     }
 
-    private fun view(service: A11yService, action: String, get: (String) -> String?): Result {
+    private fun view(service: MimicService, action: String, get: (String) -> String?): Result {
         val root = service.activeRoot() ?: return fail("no active window")
         var cfg = ViewConfig.from(get)
         // FIND defaults to a flat match list unless an explicit format is given.
@@ -85,14 +85,14 @@ object Commands {
         return ok(NodeTree.render(root, cfg))
     }
 
-    private fun click(service: A11yService, get: (String) -> String?): Result {
+    private fun click(service: MimicService, get: (String) -> String?): Result {
         val by = get(Extras.BY) ?: "coords"
         if (by == "coords") return performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS)))
         val node = resolve(service, get) ?: return fail("no node matched query")
         return performed(service.clickNode(node))
     }
 
-    private fun setText(service: A11yService, get: (String) -> String?): Result {
+    private fun setText(service: MimicService, get: (String) -> String?): Result {
         val text = get(Extras.TEXT) ?: return fail("missing text")
         val node = resolve(service, get) ?: return fail("no node matched query")
         return performed(service.setNodeText(node, text))
@@ -100,12 +100,12 @@ object Commands {
 
     // locate the first node matching the by/query/match args in the active
     // window, fresh at call time (stateless interaction).
-    private fun resolve(service: A11yService, get: (String) -> String?): AccessibilityNodeInfo? =
+    private fun resolve(service: MimicService, get: (String) -> String?): AccessibilityNodeInfo? =
         if (get(Extras.QUERY).isNullOrEmpty()) null
         else NodeTree.firstMatch(service.activeRoot(), ViewConfig.from(get))
 
     // start an activity by package (its launcher), explicit component, or
-    // action/uri. uses the a11y service context when available. note: android
+    // action/uri. uses the mimic service context when available. note: android
     // background-activity-launch rules may block this unless the app is
     // foreground-recent; the screen must be unlocked.
     private fun launch(ctx: Context, get: (String) -> String?): Result {
@@ -124,7 +124,7 @@ object Commands {
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
-            (A11yService.instance ?: ctx).startActivity(intent)
+            (MimicService.instance ?: ctx).startActivity(intent)
             ok(JSONObject().put("launched", true))
         } catch (e: Exception) {
             fail("launch failed: ${e.message}")

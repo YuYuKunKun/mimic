@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.content.Context
 import android.util.Base64
@@ -88,17 +88,17 @@ object Mcp {
     // ---- tool catalog ----
 
     private val TOOL_ACTION = mapOf(
-        "a11y_status" to Cmd.STATUS,
-        "a11y_dump" to Cmd.DUMP,
-        "a11y_find" to Cmd.FIND,
-        "a11y_tap" to Cmd.TAP,
-        "a11y_long_press" to Cmd.LONG_PRESS,
-        "a11y_swipe" to Cmd.SWIPE,
-        "a11y_click" to Cmd.CLICK,
-        "a11y_set_text" to Cmd.SET_TEXT,
-        "a11y_global" to Cmd.GLOBAL,
-        "a11y_launch" to Cmd.LAUNCH,
-        "a11y_screenshot" to Cmd.SCREENSHOT,
+        "mimic_status" to Cmd.STATUS,
+        "mimic_dump" to Cmd.DUMP,
+        "mimic_find" to Cmd.FIND,
+        "mimic_tap" to Cmd.TAP,
+        "mimic_long_press" to Cmd.LONG_PRESS,
+        "mimic_swipe" to Cmd.SWIPE,
+        "mimic_click" to Cmd.CLICK,
+        "mimic_set_text" to Cmd.SET_TEXT,
+        "mimic_global" to Cmd.GLOBAL,
+        "mimic_launch" to Cmd.LAUNCH,
+        "mimic_screenshot" to Cmd.SCREENSHOT,
     )
 
     private fun prop(type: String, desc: String, enum: List<String>? = null): JSONObject {
@@ -127,37 +127,37 @@ object Mcp {
     private val FIELDS = prop("string", "comma list: class,text,desc,id,bounds,center,actions")
 
     private val TOOLS: JSONArray = JSONArray(listOf(
-        tool("a11y_status", "report whether the service is enabled and which surfaces are on", schema(emptyList(), emptyMap())),
-        tool("a11y_dump", "dump the active window node tree; filter on-device to keep output small",
+        tool("mimic_status", "report whether the service is enabled and which surfaces are on", schema(emptyList(), emptyMap())),
+        tool("mimic_dump", "dump the active window node tree; filter on-device to keep output small",
             schema(emptyList(), mapOf("filter" to FILTER, "format" to FORMAT, "max_depth" to DEPTH, "package" to PACKAGE, "fields" to FIELDS))),
-        tool("a11y_find", "find nodes matching a query; returns a flat match list by default",
+        tool("mimic_find", "find nodes matching a query; returns a flat match list by default",
             schema(listOf("query"), mapOf(
                 "query" to prop("string", "the text/id/class/desc to match"),
                 "by" to BY, "match" to MATCH, "format" to FORMAT, "fields" to FIELDS, "filter" to FILTER, "max_depth" to DEPTH, "package" to PACKAGE))),
-        tool("a11y_tap", "tap at screen coordinates",
+        tool("mimic_tap", "tap at screen coordinates",
             schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms")))),
-        tool("a11y_long_press", "long press at screen coordinates",
+        tool("mimic_long_press", "long press at screen coordinates",
             schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms")))),
-        tool("a11y_swipe", "swipe from (x,y) to (x2,y2)",
+        tool("mimic_swipe", "swipe from (x,y) to (x2,y2)",
             schema(listOf("x", "y", "x2", "y2"), mapOf(
                 "x" to prop("integer", "start x"), "y" to prop("integer", "start y"),
                 "x2" to prop("integer", "end x"), "y2" to prop("integer", "end y"), "duration" to prop("integer", "ms")))),
-        tool("a11y_click", "click a node found by text/id/class/desc, or tap coordinates (by=coords)",
+        tool("mimic_click", "click a node found by text/id/class/desc, or tap coordinates (by=coords)",
             schema(emptyList(), mapOf(
                 "by" to prop("string", "coords | text | id | class | desc", listOf("coords", "text", "id", "class", "desc")),
                 "query" to prop("string", "value to match when by is not coords"),
                 "x" to prop("integer", "x px when by=coords"), "y" to prop("integer", "y px when by=coords"), "match" to MATCH))),
-        tool("a11y_set_text", "set the text of an editable node located by text/id/class/desc",
+        tool("mimic_set_text", "set the text of an editable node located by text/id/class/desc",
             schema(listOf("text"), mapOf("text" to prop("string", "text to enter"), "by" to BY, "query" to prop("string", "value to match"), "match" to MATCH))),
-        tool("a11y_global", "perform a global navigation action",
+        tool("mimic_global", "perform a global navigation action",
             schema(listOf("nav"), mapOf("nav" to prop("string", "back | home | recents | notifications", listOf("back", "home", "recents", "notifications"))))),
-        tool("a11y_launch", "launch an app or activity (by package, component, or action/uri)",
+        tool("mimic_launch", "launch an app or activity (by package, component, or action/uri)",
             schema(emptyList(), mapOf(
                 "package" to prop("string", "launch this app's main activity"),
                 "component" to prop("string", "explicit 'pkg/.Activity'"),
                 "action" to prop("string", "an intent action"),
                 "uri" to prop("string", "data uri (with action, or opened via ACTION_VIEW)")))),
-        tool("a11y_screenshot", "capture the screen as an image -- a last resort; prefer the text tree (dump/find) which is far cheaper",
+        tool("mimic_screenshot", "capture the screen as an image -- a last resort; prefer the text tree (dump/find) which is far cheaper",
             schema(emptyList(), mapOf(
                 "format" to prop("string", "png | jpeg", listOf("png", "jpeg")),
                 "quality" to prop("integer", "jpeg quality 1-100"),

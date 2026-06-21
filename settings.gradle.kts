@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "android-a11y"
+rootProject.name = "mimic"
 include(":app")

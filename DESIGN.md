@@ -2,10 +2,10 @@
 
 ## overview
 
-a single android app, package `com.khimaros.a11y`. one accessibility core is
+a single android app, package `com.khimaros.mimic`. one accessibility core is
 exposed over three independent **surfaces**, each separately toggleable:
 
-- **A11yService** -- the `AccessibilityService` (singleton) holding the live
+- **MimicService** -- the `AccessibilityService` (singleton) holding the live
   framework connection. it implements view (read the node tree) and interact
   (dispatch gestures, perform node/global actions). all real work lives here.
 - **Commands** -- a transport-agnostic core. each surface parses its own
@@ -18,7 +18,7 @@ exposed over three independent **surfaces**, each separately toggleable:
 - **HostService** (http + mcp surfaces) -- a foreground service running a token-
   gated http server on `127.0.0.1`. `/v1/<cmd>` is the rest surface; `/mcp` is an
   in-app mcp (json-rpc) endpoint. both share one socket. it also serves a few
-  unauthenticated static routes (`/`, `/cli/a11y`, `/SKILL.md`) from bundled
+  unauthenticated static routes (`/`, `/cli/mimic`, `/SKILL.md`) from bundled
   assets so a client can bootstrap or update the cli before it has a token; the
   assets are copied from the repo root at build time (gradle `syncBootstrap`) so
   they always match the source.
@@ -27,14 +27,14 @@ exposed over three independent **surfaces**, each separately toggleable:
 - **BootReceiver** -- restarts the host surfaces after a reboot when launch-on-
   boot is set; it performs no accessibility action, so it stays enabled.
 
-everything runs in one process, so the surfaces call the `A11yService` singleton
+everything runs in one process, so the surfaces call the `MimicService` singleton
 directly with no ipc.
 
 ```
-  clients                         app process (com.khimaros.a11y)
+  clients                         app process (com.khimaros.mimic)
   -------                         ------------------------------------
   am/termux-am/adb broadcast --> CommandReceiver --\
-  curl/agent  -> 127.0.0.1/v1 --> HostService(rest) --> Commands --> A11yService
+  curl/agent  -> 127.0.0.1/v1 --> HostService(rest) --> Commands --> MimicService
   mcp client  -> 127.0.0.1/mcp --> HostService(mcp)  --/   (auth:        (framework
                                           \--- TokenStore ---/ TokenStore)   apis)
 ```
@@ -71,7 +71,10 @@ view -> `format` (tree|flat|compact), `filter` (interactive|text|visible|all),
 
 `LAUNCH` and `STATUS` do not need the accessibility service; the rest do.
 launching uses the service (or app) context to `startActivity` and is subject to
-android background-activity-launch rules. `SCREENSHOT` uses the framework's
+android background-activity-launch rules. resolving another app by package needs
+package visibility (android 11+): the manifest declares `<queries>` for launchable
+apps and uri handlers, so `getLaunchIntentForPackage` can see third-party apps
+without the broad `QUERY_ALL_PACKAGES` permission. `SCREENSHOT` uses the framework's
 `takeScreenshot` (config `canTakeScreenshot`, api 30+, rate-limited ~1/sec) and
 returns image bytes -- `Commands.Result.data` is a `ByteArray`. http sends it raw
 (`image/png|jpeg`), mcp wraps it in an image content block, and json consumers
@@ -79,11 +82,11 @@ returns image bytes -- `Commands.Result.data` is a `ByteArray`. http sends it ra
 
 each surface maps its transport onto this:
 
-- intents: action = `com.khimaros.a11y.action.<CMD>`, arguments = `--es` extras.
+- intents: action = `com.khimaros.mimic.action.<CMD>`, arguments = `--es` extras.
   reply = `base64(json)` in the ordered-broadcast result data (no quotes/newlines,
   so a single regex extracts it from `am` output; needs no storage permission).
 - rest: `POST /v1/<cmd>` with a json body of arguments (or query params), token in
-  the `x-a11y-token` header (or `?token=`). reply = plain json.
+  the `x-mimic-token` header (or `?token=`). reply = plain json.
 - mcp: `tools/call` with `{name, arguments}`; the tool name maps to a command and
   the arguments object to the getter. reply = mcp tool content.
 
@@ -117,7 +120,7 @@ tree read earlier cannot cause a click on a stale coordinate.
 `HostService` answers `/mcp` with a minimal mcp server (streamable http, json-rpc
 2.0): `initialize`, `tools/list`, `tools/call`, `ping`; notifications get a 202.
 each POST is handled statelessly and answered with `application/json`. the tools
-(`a11y_dump`, `a11y_find`, `a11y_tap`, ...) wrap the same `Commands` core, with
+(`mimic_dump`, `mimic_find`, `mimic_tap`, ...) wrap the same `Commands` core, with
 json-schema input. auth is at the http layer (token header), so tool calls carry
 no token themselves.
 
@@ -139,13 +142,13 @@ new one is shown.
 
 ## clients
 
-- `cli/a11y` -- a posix shell script. it auto-selects a transport: the localhost
+- `cli/mimic` -- a posix shell script. it auto-selects a transport: the localhost
   http surface if reachable (works in proot/termux/host), else `adb shell am` if a
   device is connected (shell uid, returns results, incl. wireless), else
   `termux-am`, else bare `am`. reads the token from
-  `${A11Y_HOME:-$HOME/.config/a11y}/token`.
+  `${MIMIC_HOME:-$HOME/.config/mimic}/token`.
 - mcp clients (claude code/desktop, agents) point at `http://127.0.0.1:8473/mcp`
-  with an `x-a11y-token` header (over `adb forward` from a host).
+  with an `x-mimic-token` header (over `adb forward` from a host).
 - `SKILL.md` -- documents the surfaces, the cli, and mcp config, and how to use
   `filter`/`FIND`/`format=compact` to keep context small.
 

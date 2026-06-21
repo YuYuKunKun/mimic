@@ -4,4 +4,5 @@
     <color name="fg">#E0E0E0</color>
     <color name="muted">#9E9E9E</color>
     <color name="accent">#4CAF50</color>
+    <color name="icon_bg">#15171C</color>
 </resources>

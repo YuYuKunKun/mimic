@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -80,7 +80,7 @@ class HostService : Service() {
             "/healthz" ->
                 return respond(out, "200 OK", JSONObject().put("ok", true).put("server", Host.SERVER_NAME).toString())
             "/" -> return respond(out, "200 OK", indexText(), "text/plain; charset=utf-8")
-            "/cli/a11y", "/a11y" -> return serveAsset(out, "a11y", "text/x-shellscript; charset=utf-8")
+            "/cli/mimic", "/mimic" -> return serveAsset(out, "mimic", "text/x-shellscript; charset=utf-8")
             "/SKILL.md", "/skill" -> return serveAsset(out, "SKILL.md", "text/markdown; charset=utf-8")
         }
         if (!TokenStore.verify(this, req.token())) {
@@ -203,14 +203,14 @@ class HostService : Service() {
     }
 
     private fun indexText(): String = """
-        android-a11y host server.
+        mimic host server.
 
         bootstrap the cli:
-          curl -s http://${Host.ADDR}:${Host.PORT}/cli/a11y -o a11y && chmod +x a11y
+          curl -s http://${Host.ADDR}:${Host.PORT}/cli/mimic -o mimic && chmod +x mimic
         docs:
           http://${Host.ADDR}:${Host.PORT}/SKILL.md
         mcp endpoint:
-          http://${Host.ADDR}:${Host.PORT}/mcp  (header x-a11y-token)
+          http://${Host.ADDR}:${Host.PORT}/mcp  (header x-mimic-token)
     """.trimIndent() + "\n"
 
     private fun error(message: String): String =
@@ -233,7 +233,7 @@ class HostService : Service() {
             if (AppState.mcp(this@HostService)) add("mcp")
         }.joinToString("+").ifEmpty { "idle" }
         val notification: Notification = Notification.Builder(this, channelId)
-            .setContentTitle("a11y automation")
+            .setContentTitle("mimic")
             .setContentText("serving $surfaces on ${Host.ADDR}:${Host.PORT}")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)

@@ -4,10 +4,10 @@
 
 ```
 app/                kotlin android app (the accessibility service + receiver)
-  src/main/kotlin/com/khimaros/a11y/
+  src/main/kotlin/com/khimaros/mimic/
   src/main/res/
   src/main/AndroidManifest.xml
-cli/a11y            posix shell cli for termux / adb
+cli/mimic            posix shell cli for termux / adb
 tests/              python end-to-end tests (driven over adb)
 SKILL.md            intent + cli reference for agents
 Makefile            build / install / test entry points
@@ -57,11 +57,11 @@ checked into the repo:
 
   ```
   # one-time: create a keystore kept outside the repo
-  keytool -genkeypair -v -keystore ~/.android/a11y-release.jks -alias a11y \
+  keytool -genkeypair -v -keystore ~/.android/mimic-release.jks -alias mimic \
       -keyalg RSA -keysize 2048 -validity 10000
 
-  A11Y_KEYSTORE=~/.android/a11y-release.jks A11Y_KEYSTORE_PASS=... \
-  A11Y_KEY_ALIAS=a11y A11Y_KEY_PASS=... make release
+  MIMIC_KEYSTORE=~/.android/mimic-release.jks MIMIC_KEYSTORE_PASS=... \
+  MIMIC_KEY_ALIAS=mimic MIMIC_KEY_PASS=... make release
   ```
 
   updates to an installed copy must use the same key (android rejects a re-sign

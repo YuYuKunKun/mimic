@@ -10,9 +10,23 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- package visibility (android 11+, target sdk 30+): without this, other
+         apps are invisible and `launch` cannot resolve them. declare that we
+         query launchable apps and uri handlers (proportionate; avoids the broad
+         QUERY_ALL_PACKAGES permission). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
@@ -26,7 +40,7 @@
         </activity>
 
         <service
-            android:name=".A11yService"
+            android:name=".MimicService"
             android:exported="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -55,18 +69,18 @@
             android:enabled="false"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.khimaros.a11y.action.DUMP" />
-                <action android:name="com.khimaros.a11y.action.FIND" />
-                <action android:name="com.khimaros.a11y.action.TAP" />
-                <action android:name="com.khimaros.a11y.action.LONG_PRESS" />
-                <action android:name="com.khimaros.a11y.action.SWIPE" />
-                <action android:name="com.khimaros.a11y.action.CLICK" />
-                <action android:name="com.khimaros.a11y.action.SET_TEXT" />
-                <action android:name="com.khimaros.a11y.action.GLOBAL" />
-                <action android:name="com.khimaros.a11y.action.LAUNCH" />
-                <action android:name="com.khimaros.a11y.action.SCREENSHOT" />
-                <action android:name="com.khimaros.a11y.action.PAIR" />
-                <action android:name="com.khimaros.a11y.action.STATUS" />
+                <action android:name="com.khimaros.mimic.action.DUMP" />
+                <action android:name="com.khimaros.mimic.action.FIND" />
+                <action android:name="com.khimaros.mimic.action.TAP" />
+                <action android:name="com.khimaros.mimic.action.LONG_PRESS" />
+                <action android:name="com.khimaros.mimic.action.SWIPE" />
+                <action android:name="com.khimaros.mimic.action.CLICK" />
+                <action android:name="com.khimaros.mimic.action.SET_TEXT" />
+                <action android:name="com.khimaros.mimic.action.GLOBAL" />
+                <action android:name="com.khimaros.mimic.action.LAUNCH" />
+                <action android:name="com.khimaros.mimic.action.SCREENSHOT" />
+                <action android:name="com.khimaros.mimic.action.PAIR" />
+                <action android:name="com.khimaros.mimic.action.STATUS" />
             </intent-filter>
         </receiver>
 

@@ -8,4 +8,4 @@
     android:canPerformGestures="true"
     android:canTakeScreenshot="true"
     android:notificationTimeout="100"
-    android:settingsActivity="com.khimaros.a11y.MainActivity" />
+    android:settingsActivity="com.khimaros.mimic.MainActivity" />

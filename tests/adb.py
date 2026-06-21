@@ -14,9 +14,9 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
-PKG = "com.khimaros.a11y"
+PKG = "com.khimaros.mimic"
 ACTIVITY = f"{PKG}/{PKG}.MainActivity"
-SERVICE = f"{PKG}/{PKG}.A11yService"
+SERVICE = f"{PKG}/{PKG}.MimicService"
 RECEIVER = f"{PKG}/.CommandReceiver"
 ACTION = PKG + ".action."
 PORT = 8473
@@ -72,8 +72,8 @@ def forward():
 # ---- ui automation ----
 
 def ui():
-    shell("uiautomator", "dump", "/sdcard/a11y_e2e.xml")
-    return ET.fromstring(adb("shell", "cat", "/sdcard/a11y_e2e.xml").stdout)
+    shell("uiautomator", "dump", "/sdcard/mimic_e2e.xml")
+    return ET.fromstring(adb("shell", "cat", "/sdcard/mimic_e2e.xml").stdout)
 
 
 def node_with(root, needle):
@@ -106,9 +106,9 @@ def ensure_switch(label, desired=True):
 
 def reveal_token():
     tap_node(node_with(ui(), "show pairing code"))
-    # the creds field uniquely contains "x-a11y-token"; the token is the only
+    # the creds field uniquely contains "x-mimic-token"; the token is the only
     # long base64url run in it.
-    creds = node_with(ui(), "x-a11y-token")
+    creds = node_with(ui(), "x-mimic-token")
     text = creds.get("text") if creds is not None else ""
     m = _TOKEN_RE.search(text or "")
     assert m, f"token not found in ui: {text!r}"
@@ -133,7 +133,7 @@ def broadcast(action, **extras):
 def http(method, path, token, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
-    req.add_header("x-a11y-token", token)
+    req.add_header("x-mimic-token", token)
     if data:
         req.add_header("content-type", "application/json")
     try:
@@ -169,7 +169,7 @@ def http_text(path):
 def http_raw(path, token, body):
     """POST and return (status, content_type, raw bytes) -- for binary responses."""
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), method="POST")
-    req.add_header("x-a11y-token", token)
+    req.add_header("x-mimic-token", token)
     req.add_header("content-type", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=10) as r:

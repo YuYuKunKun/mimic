@@ -15,7 +15,7 @@
 - [x] start/stop kill-switch by enabling/disabling the receiver component
 - [x] launch-on-boot re-arm (boot receiver)
 - [x] dark onboarding ui (service status, pairing, start/stop, boot toggle)
-- [x] `a11y` posix shell cli
+- [x] `mimic` posix shell cli
 - [x] SKILL.md (raw intents + cli + context-reduction guidance)
 - [x] python e2e tests over adb (`make test-e2e`)
 - [x] debug apk builds clean with zero external dependencies
@@ -35,8 +35,8 @@
 - [x] python e2e (`make test-e2e`) updated for the new ui + surfaces
 - [x] app reconciles the host server with prefs on resume (fix found by e2e)
 - [x] compact format sanitizes whitespace in labels (fix found by e2e)
-- [x] http surface serves the cli + SKILL for bootstrap/update (`a11y update`)
-- [x] activity launcher (LAUNCH) on all surfaces + cli `launch` + mcp a11y_launch
+- [x] http surface serves the cli + SKILL for bootstrap/update (`mimic update`)
+- [x] activity launcher (LAUNCH) on all surfaces + cli `launch` + mcp mimic_launch
 
 ## milestone 3: screenshot, output, pairing controls (done; verified on device)
 

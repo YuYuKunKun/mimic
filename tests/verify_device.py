@@ -55,12 +55,12 @@ def main():
 
     print("\n== mcp ==")
     s, b = adb.mcp(token, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
-    check("initialize", b.get("result", {}).get("serverInfo", {}).get("name") == "android-a11y", "")
+    check("initialize", b.get("result", {}).get("serverInfo", {}).get("name") == "mimic", "")
     s, b = adb.mcp(token, "tools/list")
     tools = [t["name"] for t in b.get("result", {}).get("tools", [])]
-    check("tools/list", "a11y_dump" in tools, f"{len(tools)} tools")
-    s, b = adb.mcp(token, "tools/call", {"name": "a11y_status", "arguments": {}})
-    check("tools/call a11y_status", b.get("result", {}).get("isError") is False, "")
+    check("tools/list", "mimic_dump" in tools, f"{len(tools)} tools")
+    s, b = adb.mcp(token, "tools/call", {"name": "mimic_status", "arguments": {}})
+    check("tools/call mimic_status", b.get("result", {}).get("isError") is False, "")
 
     print("\n== intents ==")
     r = adb.broadcast("STATUS")

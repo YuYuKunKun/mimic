@@ -1,6 +1,6 @@
 # requirements
 
-product requirements for the android a11y automation service. it is never
+product requirements for the mimic service. it is never
 okay to regress on these in a release.
 
 ## scope
@@ -87,13 +87,13 @@ as small as the accessibility framework and that local server require.
 
 ## R5 clients
 
-- R5.1 a self-contained posix shell cli (`a11y`) usable from termux with no extra
+- R5.1 a self-contained posix shell cli (`mimic`) usable from termux with no extra
   runtime. it auto-selects a working transport (localhost http, else adb, else
   termux-am/am) and stores the token mode 600.
 - R5.2 a `SKILL.md` documenting the surfaces, the cli, and mcp client config, with
   explicit guidance on using filtering/query to minimize context for agents.
 - R5.3 the http surface serves the cli and `SKILL.md` (unauthenticated) so a
-  client can bootstrap (`curl .../cli/a11y`) or self-update (`a11y update`); the
+  client can bootstrap (`curl .../cli/mimic`) or self-update (`mimic update`); the
   served copies are bundled from the repo at build time so they match the source.
 
 ## R6 build and test

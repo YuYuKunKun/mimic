@@ -4,30 +4,30 @@ plugins {
 }
 
 android {
-    namespace = "com.khimaros.a11y"
+    namespace = "com.khimaros.mimic"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.khimaros.a11y"
+        applicationId = "com.khimaros.mimic"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.2.0"
+        versionName = "0.3.0"
     }
 
     // env-gated release signing; the keystore stays out of the repo. set
-    // A11Y_KEYSTORE (+ A11Y_KEYSTORE_PASS / A11Y_KEY_ALIAS / A11Y_KEY_PASS) to
+    // MIMIC_KEYSTORE (+ MIMIC_KEYSTORE_PASS / MIMIC_KEY_ALIAS / MIMIC_KEY_PASS) to
     // produce a signed release apk; without it, assembleRelease stays unsigned.
     // providers.environmentVariable reads the invoking env even under the daemon.
     fun env(name: String): String? = providers.environmentVariable(name).orNull
-    val releaseSigning = env("A11Y_KEYSTORE")?.let { path ->
+    val releaseSigning = env("MIMIC_KEYSTORE")?.let { path ->
         val keystore = file(path)
         if (!keystore.exists()) null
         else signingConfigs.create("release") {
             storeFile = keystore
-            storePassword = env("A11Y_KEYSTORE_PASS")
-            keyAlias = env("A11Y_KEY_ALIAS")
-            keyPassword = env("A11Y_KEY_PASS")
+            storePassword = env("MIMIC_KEYSTORE_PASS")
+            keyAlias = env("MIMIC_KEY_ALIAS")
+            keyPassword = env("MIMIC_KEY_PASS")
         }
     }
 
@@ -64,7 +64,7 @@ dependencies {
 // bootstrapping/updates. copied from the repo root at build time to stay in sync.
 val bootstrapDir = layout.buildDirectory.dir("generated/bootstrap")
 val syncBootstrap by tasks.registering(Copy::class) {
-    from(rootProject.file("cli/a11y"))
+    from(rootProject.file("cli/mimic"))
     from(rootProject.file("SKILL.md"))
     into(bootstrapDir)
 }

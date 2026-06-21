@@ -1,4 +1,4 @@
-package com.khimaros.a11y
+package com.khimaros.mimic
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.ScreenshotResult
@@ -23,11 +23,11 @@ import java.util.concurrent.atomic.AtomicReference
 // the live accessibility connection. a process-wide singleton so CommandReceiver
 // (same process) can call straight into it. holds no command state -- every view
 // and interaction is computed fresh from the current window.
-class A11yService : AccessibilityService() {
+class MimicService : AccessibilityService() {
 
     companion object {
         @Volatile
-        var instance: A11yService? = null
+        var instance: MimicService? = null
             private set
 
         fun isEnabled(): Boolean = instance != null

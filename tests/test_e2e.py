@@ -8,6 +8,7 @@ intents, http, and mcp surfaces.
 import time
 
 import adb
+import pytest
 
 
 # ---- http surface ----
@@ -25,10 +26,10 @@ def test_http_healthz_unauthenticated(token):
 
 
 def test_bootstrap_serves_cli_and_skill(token):
-    s, body = adb.http_text("/cli/a11y")  # unauthenticated
-    assert s == 200 and body.startswith("#!") and "a11y --" in body
+    s, body = adb.http_text("/cli/mimic")  # unauthenticated
+    assert s == 200 and body.startswith("#!") and "mimic --" in body
     s, body = adb.http_text("/SKILL.md")
-    assert s == 200 and "android a11y" in body.lower()
+    assert s == 200 and "mimic" in body.lower()
 
 
 def test_http_rejects_bad_token(token):
@@ -72,6 +73,36 @@ def test_http_screenshot_returns_png(token):
     assert len(data) > 1000
 
 
+def _launchable_third_party():
+    listed = adb.shell("pm", "list", "packages", "-3").split()
+    for entry in listed:
+        pkg = entry.replace("package:", "").strip()
+        if not pkg:
+            continue
+        resolved = adb.shell(
+            "cmd", "package", "resolve-activity", "--brief",
+            "-a", "android.intent.action.MAIN",
+            "-c", "android.intent.category.LAUNCHER", pkg,
+        )
+        if "/" in resolved and "No activity" not in resolved:
+            return pkg
+    return None
+
+
+def test_http_launch_third_party_app(token):
+    # the visibility fix (<queries>) lets `launch` resolve non-system apps.
+    pkg = _launchable_third_party()
+    if not pkg:
+        pytest.skip("no launchable third-party app installed")
+    adb.shell("am", "start", "-n", adb.ACTIVITY)  # foreground first (bal grace)
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/launch", token, {"package": pkg})
+    assert s == 200 and b["ok"] and b["data"]["launched"] is True, b
+    time.sleep(1.5)
+    assert pkg in adb.top_activity()
+    adb.http("POST", "/v1/global", token, {"nav": "home"})
+
+
 def test_http_launch_app(token):
     adb.shell("am", "start", "-n", adb.ACTIVITY)  # foreground first (bal grace)
     time.sleep(1.0)
@@ -88,26 +119,26 @@ def test_http_launch_app(token):
 def test_mcp_initialize(token):
     s, b = adb.mcp(token, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
     assert "result" in b
-    assert b["result"]["serverInfo"]["name"] == "android-a11y"
+    assert b["result"]["serverInfo"]["name"] == "mimic"
 
 
 def test_mcp_tools_list(token):
     s, b = adb.mcp(token, "tools/list")
     names = [t["name"] for t in b["result"]["tools"]]
-    assert {"a11y_dump", "a11y_find", "a11y_tap", "a11y_status", "a11y_screenshot"} <= set(names)
+    assert {"mimic_dump", "mimic_find", "mimic_tap", "mimic_status", "mimic_screenshot"} <= set(names)
 
 
 def test_mcp_screenshot_image_block(token):
     import base64
     time.sleep(1.2)  # screenshot is rate-limited to ~1/sec
-    s, b = adb.mcp(token, "tools/call", {"name": "a11y_screenshot", "arguments": {"scale": "0.5"}})
+    s, b = adb.mcp(token, "tools/call", {"name": "mimic_screenshot", "arguments": {"scale": "0.5"}})
     block = b["result"]["content"][0]
     assert block["type"] == "image" and block["mimeType"] == "image/png"
     assert base64.b64decode(block["data"])[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_mcp_tools_call_status(token):
-    s, b = adb.mcp(token, "tools/call", {"name": "a11y_status", "arguments": {}})
+    s, b = adb.mcp(token, "tools/call", {"name": "mimic_status", "arguments": {}})
     assert b["result"]["isError"] is False
     assert "service_enabled" in b["result"]["content"][0]["text"]
 

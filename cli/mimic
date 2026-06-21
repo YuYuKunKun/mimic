@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# a11y -- drive the android a11y automation service from a shell (termux/adb).
+# mimic -- drive the mimic service from a shell (termux/adb).
 #
 # it speaks to whichever surface is reachable:
 #   http     -- POST to the localhost rest api (works from proot, native termux,
@@ -7,30 +7,30 @@
 #   intents  -- `am`/`termux-am broadcast` to the receiver, base64 result decode.
 #
 # config (env):
-#   A11Y_TRANSPORT  force "http" or "intents" (default: auto-detect).
-#   A11Y_HOST       host:port of the rest/mcp server (default 127.0.0.1:8473).
-#   A11Y_AM         the am command for the intents surface (default: termux-am if
+#   MIMIC_TRANSPORT  force "http" or "intents" (default: auto-detect).
+#   MIMIC_HOST       host:port of the rest/mcp server (default 127.0.0.1:8473).
+#   MIMIC_AM         the am command for the intents surface (default: termux-am if
 #                   present, else am). set "adb shell am" to drive over usb.
-#   A11Y_HOME       token directory (default $XDG_CONFIG_HOME/a11y).
+#   MIMIC_HOME       token directory (default $XDG_CONFIG_HOME/mimic).
 
 set -u
 
-PKG="com.khimaros.a11y"
+PKG="com.khimaros.mimic"
 COMPONENT="$PKG/.CommandReceiver"
 ACT_PREFIX="$PKG.action."
 
-HOST="${A11Y_HOST:-127.0.0.1:8473}"
-ADB="${A11Y_ADB:-adb}"
-A11Y_HOME="${A11Y_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/a11y}"
-TOKEN_FILE="$A11Y_HOME/token"
+HOST="${MIMIC_HOST:-127.0.0.1:8473}"
+ADB="${MIMIC_ADB:-adb}"
+MIMIC_HOME="${MIMIC_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/mimic}"
+TOKEN_FILE="$MIMIC_HOME/token"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # how to run `am` for the intents surface, best first:
-#   A11Y_AM override > adb (shell uid, can return results, even over wireless)
+#   MIMIC_AM override > adb (shell uid, can return results, even over wireless)
 #   > termux-am (native termux shell) > bare am.
-if [ -n "${A11Y_AM:-}" ]; then
-    AM_KIND=direct; AM="$A11Y_AM"
+if [ -n "${MIMIC_AM:-}" ]; then
+    AM_KIND=direct; AM="$MIMIC_AM"
 elif have "${ADB%% *}" && [ "$($ADB get-state 2>/dev/null)" = device ]; then
     AM_KIND=adb; AM="$ADB shell am"
 elif have termux-am; then
@@ -42,8 +42,8 @@ fi
 TOKEN=""
 [ -f "$TOKEN_FILE" ] && TOKEN=$(cat "$TOKEN_FILE")
 
-die() { echo "a11y: $*" >&2; exit 1; }
-need_token() { [ -n "$TOKEN" ] || die "no token; run 'a11y pair' (intents) or 'a11y set-token <token>' (http/mcp)"; }
+die() { echo "mimic: $*" >&2; exit 1; }
+need_token() { [ -n "$TOKEN" ] || die "no token; run 'mimic pair' (intents) or 'mimic set-token <token>' (http/mcp)"; }
 
 # single-quote an argument for a remote shell (adb shell re-parses its command).
 shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -61,7 +61,7 @@ run_am_argv() {
 }
 
 detect_transport() {
-    [ -n "${A11Y_TRANSPORT:-}" ] && { printf '%s' "$A11Y_TRANSPORT"; return; }
+    [ -n "${MIMIC_TRANSPORT:-}" ] && { printf '%s' "$MIMIC_TRANSPORT"; return; }
     if have curl && curl -sS -m 1 "http://$HOST/healthz" >/dev/null 2>&1; then
         printf 'http'
     else
@@ -77,7 +77,7 @@ json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 decode_output() {
     _b64=$(printf '%s\n' "$1" | sed -n 's/.*data="\([^"]*\)".*/\1/p' | tail -n1)
     if [ -z "$_b64" ]; then
-        echo "a11y: no response (intents surface off, or am cannot return a result here -- try the http surface)" >&2
+        echo "mimic: no response (intents surface off, or am cannot return a result here -- try the http surface)" >&2
         return 1
     fi
     printf '%s' "$_b64" | base64 -d 2>/dev/null
@@ -94,7 +94,7 @@ emit() {
             printf '%s' "$_d" | jq -r '.data'
             return 0
         fi
-        echo "a11y: $(printf '%s' "$_d" | jq -r '.error // "error"')" >&2
+        echo "mimic: $(printf '%s' "$_d" | jq -r '.error // "error"')" >&2
         return 1
     fi
     printf '%s\n' "$_d"
@@ -119,9 +119,9 @@ send_http() {
         shift 2
     done
     _body="$_body}"
-    _resp=$(curl -sS -H "x-a11y-token: $TOKEN" -H "content-type: application/json" \
+    _resp=$(curl -sS -H "x-mimic-token: $TOKEN" -H "content-type: application/json" \
         -X POST "http://$HOST/v1/$_path" -d "$_body" 2>/dev/null || true)
-    [ -n "$_resp" ] || { echo "a11y: no response from http://$HOST" >&2; return 1; }
+    [ -n "$_resp" ] || { echo "mimic: no response from http://$HOST" >&2; return 1; }
     emit "$_resp"
 }
 
@@ -149,10 +149,10 @@ cmd_status() {
 cmd_set_token() {
     _t="${1:-}"
     [ -n "$_t" ] || { printf 'paste token: ' >&2; read -r _t; }
-    mkdir -p "$A11Y_HOME"
+    mkdir -p "$MIMIC_HOME"
     ( umask 077; printf '%s' "$_t" > "$TOKEN_FILE" )
     chmod 600 "$TOKEN_FILE" 2>/dev/null || true
-    echo "a11y: token saved to $TOKEN_FILE"
+    echo "mimic: token saved to $TOKEN_FILE"
 }
 
 # re-download this script from the host server (served unauthenticated). default
@@ -160,11 +160,11 @@ cmd_set_token() {
 cmd_update() {
     have curl || die "update needs curl"
     _dest="${1:-$0}"
-    _url="http://$HOST/cli/a11y"
+    _url="http://$HOST/cli/mimic"
     _tmp="$_dest.new.$$"
     if curl -sS -f "$_url" -o "$_tmp" 2>/dev/null; then
         chmod +x "$_tmp" 2>/dev/null || true
-        mv "$_tmp" "$_dest" && echo "a11y: updated $_dest from $_url"
+        mv "$_tmp" "$_dest" && echo "mimic: updated $_dest from $_url"
     else
         rm -f "$_tmp"
         die "could not fetch $_url (is the http surface on?)"
@@ -172,7 +172,7 @@ cmd_update() {
 }
 
 # pairing is intents-only (the receiver returns the token); for http/mcp copy the
-# token from the app ui into 'a11y set-token'.
+# token from the app ui into 'mimic set-token'.
 cmd_pair() {
     _code="${1:-}"
     if [ -z "$_code" ]; then printf 'enter pairing code: ' >&2; read -r _code; fi
@@ -184,7 +184,7 @@ cmd_pair() {
             cmd_set_token "$_token" ;;
         *)
             _err=$(printf '%s' "$_dec" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
-            echo "a11y: pairing failed: ${_err:-unknown}" >&2; return 1 ;;
+            echo "mimic: pairing failed: ${_err:-unknown}" >&2; return 1 ;;
     esac
 }
 
@@ -213,7 +213,7 @@ cmd_view() {
 
 cmd_find() {
     need_token
-    _query="${1:-}"; [ -n "$_query" ] || die "usage: a11y find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--format ...] [--fields ...] [--filter ...] [--max-depth N] [--package P]"
+    _query="${1:-}"; [ -n "$_query" ] || die "usage: mimic find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--format ...] [--fields ...] [--filter ...] [--max-depth N] [--package P]"
     shift
     _by=; _match=; _format=; _fields=; _depth=; _pkg=; _filter=
     while [ $# -gt 0 ]; do
@@ -241,7 +241,7 @@ cmd_find() {
 
 point_gesture() {
     _action="$1"; shift
-    [ $# -ge 2 ] || die "usage: a11y <gesture> X Y [--duration MS]"
+    [ $# -ge 2 ] || die "usage: mimic <gesture> X Y [--duration MS]"
     _x="$1"; _y="$2"; shift 2
     _dur=
     while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "unknown option $1" ;; esac; done
@@ -255,7 +255,7 @@ cmd_long() { need_token; point_gesture LONG_PRESS "$@"; }
 
 cmd_swipe() {
     need_token
-    [ $# -ge 4 ] || die "usage: a11y swipe X1 Y1 X2 Y2 [--duration MS]"
+    [ $# -ge 4 ] || die "usage: mimic swipe X1 Y1 X2 Y2 [--duration MS]"
     _x1="$1"; _y1="$2"; _x2="$3"; _y2="$4"; shift 4
     _dur=
     while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "swipe: unknown option $1" ;; esac; done
@@ -272,7 +272,7 @@ cmd_click() {
         --text) _by=text; _query="$2"; shift 2 ;;
         --class) _by=class; _query="$2"; shift 2 ;;
         --desc) _by=desc; _query="$2"; shift 2 ;;
-        *) [ $# -ge 2 ] || die "usage: a11y click X Y | --id ID | --text T [--match M]"
+        *) [ $# -ge 2 ] || die "usage: mimic click X Y | --id ID | --text T [--match M]"
            _x="$1"; _y="$2"; shift 2 ;;
     esac
     while [ $# -gt 0 ]; do case "$1" in --match) _match="$2"; shift 2 ;; *) die "click: unknown option $1" ;; esac; done
@@ -287,7 +287,7 @@ cmd_click() {
 
 cmd_text() {
     need_token
-    _value="${1:-}"; [ -n "$_value" ] || die "usage: a11y text VALUE --id ID | --text T [--match M]"
+    _value="${1:-}"; [ -n "$_value" ] || die "usage: mimic text VALUE --id ID | --text T [--match M]"
     shift
     _by=; _query=; _match=
     while [ $# -gt 0 ]; do
@@ -312,7 +312,7 @@ cmd_launch() {
     need_token
     _pkg=; _component=; _action=; _uri=
     case "${1:-}" in
-        "") die "usage: a11y launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] [--package PKG] | --uri URI" ;;
+        "") die "usage: mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] [--package PKG] | --uri URI" ;;
         --*) ;;
         *) _pkg="$1"; shift ;;
     esac
@@ -348,7 +348,7 @@ cmd_screenshot() {
         esac
     done
     if [ -z "$_dest" ]; then
-        _base=$(mktemp "${TMPDIR:-/tmp}/a11y-screenshot-XXXXXX") || die "could not create temp file"
+        _base=$(mktemp "${TMPDIR:-/tmp}/mimic-screenshot-XXXXXX") || die "could not create temp file"
         _dest="$_base.$_format"; mv "$_base" "$_dest"
     fi
     if [ "$TRANSPORT" = http ]; then
@@ -356,7 +356,7 @@ cmd_screenshot() {
         [ -n "$_quality" ] && _body="$_body,\"quality\":\"$_quality\""
         [ -n "$_scale" ] && _body="$_body,\"scale\":\"$_scale\""
         _body="$_body}"
-        curl -sS -H "x-a11y-token: $TOKEN" -H 'content-type: application/json' \
+        curl -sS -H "x-mimic-token: $TOKEN" -H 'content-type: application/json' \
             -X POST "http://$HOST/v1/screenshot" -d "$_body" -o "$_dest" 2>/dev/null
         # an error comes back as a json envelope, not image bytes
         if head -c1 "$_dest" 2>/dev/null | grep -q '{'; then
@@ -379,38 +379,38 @@ cmd_screenshot() {
 
 usage() {
     cat <<EOF
-a11y -- drive the android a11y automation service from a shell.
+mimic -- drive the mimic service from a shell.
 transport: $TRANSPORT (http host $HOST; intents via $AM)
 
 setup:
-  a11y pair [CODE]           pair over intents; saves the token (cli path)
-  a11y set-token [TOKEN]     save a token copied from the app ui (http/mcp path)
-  a11y update [DEST]         re-download this script from the host server
-  a11y status                service enabled? which surfaces are on?
+  mimic pair [CODE]           pair over intents; saves the token (cli path)
+  mimic set-token [TOKEN]     save a token copied from the app ui (http/mcp path)
+  mimic update [DEST]         re-download this script from the host server
+  mimic status                service enabled? which surfaces are on?
 
 view (filter/query run on-device to keep output small):
-  a11y dump [--filter interactive|text|visible|all] [--format tree|flat|compact]
+  mimic dump [--filter interactive|text|visible|all] [--format tree|flat|compact]
             [--max-depth N] [--package PKG] [--fields class,text,desc,id,bounds,center,actions]
-  a11y find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [+ dump opts]
+  mimic find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [+ dump opts]
 
 interact:
-  a11y tap X Y [--duration MS]        a11y longpress X Y [--duration MS]
-  a11y swipe X1 Y1 X2 Y2 [--duration MS]
-  a11y click X Y | --id ID | --text T | --class C | --desc D [--match M]
-  a11y text VALUE --id ID | --text T [--match M]
-  a11y back | home | recents | notifications
-  a11y launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
-  a11y screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
+  mimic tap X Y [--duration MS]        mimic longpress X Y [--duration MS]
+  mimic swipe X1 Y1 X2 Y2 [--duration MS]
+  mimic click X Y | --id ID | --text T | --class C | --desc D [--match M]
+  mimic text VALUE --id ID | --text T [--match M]
+  mimic back | home | recents | notifications
+  mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
+  mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
                   (last resort; prefer the text tree. writes a /tmp file, prints the path)
 
 output is the raw json envelope on stdout; nonzero exit on error.
 prefix any command with --pretty for human-friendly output (requires jq):
-  a11y --pretty dump --filter interactive --format compact
+  mimic --pretty dump --filter interactive --format compact
 EOF
 }
 
 # global flags (before the subcommand): --pretty (jq, human-friendly), --raw (default).
-PRETTY="${A11Y_PRETTY:-0}"
+PRETTY="${MIMIC_PRETTY:-0}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --pretty) PRETTY=1; shift ;;

@@ -1,0 +1,14 @@
+<!-- monochrome layer for android 13+ themed icons: a flat mask silhouette with
+     two eye holes (even-odd). the system supplies the tint. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,26.16 C77.2,26.16 86.91,32.06 86.91,45.14 C86.91,69.61 71.72,85.22 54,85.22 C36.28,85.22 21.09,69.61 21.09,45.14 C21.09,32.06 30.8,26.16 54,26.16 Z
+            M32.9,49.78 a8.44,4.64 0 1,0 16.88,0 a8.44,4.64 0 1,0 -16.88,0 Z
+            M59.07,49.78 a7.59,4.22 0 1,0 15.18,0 a7.59,4.22 0 1,0 -15.18,0 Z" />
+</vector>

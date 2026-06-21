@@ -8,8 +8,8 @@ all: build
 build:
 	$(GRADLE) assembleDebug
 
-# assemble the release apk. signed if A11Y_KEYSTORE (+ A11Y_KEYSTORE_PASS /
-# A11Y_KEY_ALIAS / A11Y_KEY_PASS) is set, otherwise unsigned. output is under
+# assemble the release apk. signed if MIMIC_KEYSTORE (+ MIMIC_KEYSTORE_PASS /
+# MIMIC_KEY_ALIAS / MIMIC_KEY_PASS) is set, otherwise unsigned. output is under
 # app/build/outputs/apk/release/.
 release:
 	$(GRADLE) assembleRelease
@@ -18,7 +18,7 @@ install:
 	$(GRADLE) installDebug
 
 uninstall:
-	adb uninstall com.khimaros.a11y
+	adb uninstall com.khimaros.mimic
 
 lint:
 	$(GRADLE) lintDebug
