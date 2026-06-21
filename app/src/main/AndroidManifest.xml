@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- re-arm surfaces after reboot when the user opted into launch on boot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- the localhost host surface: a loopback socket needs INTERNET; the server
+         runs as a foreground service so it is not killed while listening. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".A11yService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- the localhost host surface (rest + mcp). started/stopped by AppState
+             to match the http/mcp toggles. -->
+        <service
+            android:name=".HostService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="localhost server exposing accessibility view/interact to on-device automation" />
+        </service>
+
+        <!-- the intents surface. disabled by default; the intents toggle enables
+             or disables this component (see AppState.setIntents). token-gated. -->
+        <receiver
+            android:name=".CommandReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.khimaros.a11y.action.DUMP" />
+                <action android:name="com.khimaros.a11y.action.FIND" />
+                <action android:name="com.khimaros.a11y.action.TAP" />
+                <action android:name="com.khimaros.a11y.action.LONG_PRESS" />
+                <action android:name="com.khimaros.a11y.action.SWIPE" />
+                <action android:name="com.khimaros.a11y.action.CLICK" />
+                <action android:name="com.khimaros.a11y.action.SET_TEXT" />
+                <action android:name="com.khimaros.a11y.action.GLOBAL" />
+                <action android:name="com.khimaros.a11y.action.LAUNCH" />
+                <action android:name="com.khimaros.a11y.action.PAIR" />
+                <action android:name="com.khimaros.a11y.action.STATUS" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

@@ -1,0 +1,22 @@
+# gradle / android
+.gradle/
+build/
+/local.properties
+captures/
+.cxx/
+*.apk
+*.ap_
+*.dex
+
+# ide
+.idea/
+*.iml
+.kotlin/
+
+# mise local overrides
+.mise.local.toml
+
+# python e2e
+tests/.venv/
+__pycache__/
+.pytest_cache/

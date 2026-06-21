@@ -1,0 +1,382 @@
+#!/usr/bin/env sh
+# a11y -- drive the android a11y automation service from a shell (termux/adb).
+#
+# it speaks to whichever surface is reachable:
+#   http     -- POST to the localhost rest api (works from proot, native termux,
+#               or the host via `adb forward`). preferred when reachable.
+#   intents  -- `am`/`termux-am broadcast` to the receiver, base64 result decode.
+#
+# config (env):
+#   A11Y_TRANSPORT  force "http" or "intents" (default: auto-detect).
+#   A11Y_HOST       host:port of the rest/mcp server (default 127.0.0.1:8473).
+#   A11Y_AM         the am command for the intents surface (default: termux-am if
+#                   present, else am). set "adb shell am" to drive over usb.
+#   A11Y_HOME       token directory (default $XDG_CONFIG_HOME/a11y).
+
+set -u
+
+PKG="com.khimaros.a11y"
+COMPONENT="$PKG/.CommandReceiver"
+ACT_PREFIX="$PKG.action."
+
+HOST="${A11Y_HOST:-127.0.0.1:8473}"
+ADB="${A11Y_ADB:-adb}"
+A11Y_HOME="${A11Y_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/a11y}"
+TOKEN_FILE="$A11Y_HOME/token"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# how to run `am` for the intents surface, best first:
+#   A11Y_AM override > adb (shell uid, can return results, even over wireless)
+#   > termux-am (native termux shell) > bare am.
+if [ -n "${A11Y_AM:-}" ]; then
+    AM_KIND=direct; AM="$A11Y_AM"
+elif have "${ADB%% *}" && [ "$($ADB get-state 2>/dev/null)" = device ]; then
+    AM_KIND=adb; AM="$ADB shell am"
+elif have termux-am; then
+    AM_KIND=direct; AM="termux-am"
+else
+    AM_KIND=direct; AM="am"
+fi
+
+TOKEN=""
+[ -f "$TOKEN_FILE" ] && TOKEN=$(cat "$TOKEN_FILE")
+
+die() { echo "a11y: $*" >&2; exit 1; }
+need_token() { [ -n "$TOKEN" ] || die "no token; run 'a11y pair' (intents) or 'a11y set-token <token>' (http/mcp)"; }
+
+# single-quote an argument for a remote shell (adb shell re-parses its command).
+shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# run `am <args...>` either directly or, for adb, as one shell-quoted remote
+# command so values containing spaces survive the extra shell hop.
+run_am_argv() {
+    if [ "$AM_KIND" = adb ]; then
+        _rc="am"
+        for _a in "$@"; do _rc="$_rc $(shq "$_a")"; done
+        $ADB shell "$_rc"
+    else
+        $AM "$@"
+    fi
+}
+
+detect_transport() {
+    [ -n "${A11Y_TRANSPORT:-}" ] && { printf '%s' "$A11Y_TRANSPORT"; return; }
+    if have curl && curl -sS -m 1 "http://$HOST/healthz" >/dev/null 2>&1; then
+        printf 'http'
+    else
+        printf 'intents'
+    fi
+}
+TRANSPORT=$(detect_transport)
+
+# minimal json string escape (backslash and double-quote); ascii values only.
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+# extract + decode the base64 result data from an `am broadcast` reply.
+decode_output() {
+    _b64=$(printf '%s\n' "$1" | sed -n 's/.*data="\([^"]*\)".*/\1/p' | tail -n1)
+    if [ -z "$_b64" ]; then
+        echo "a11y: no response (intents surface off, or am cannot return a result here -- try the http surface)" >&2
+        return 1
+    fi
+    printf '%s' "$_b64" | base64 -d 2>/dev/null
+}
+
+# print the payload (jq pretty-prints json and unwraps strings); on an error
+# envelope, print the message to stderr and fail.
+emit() {
+    _d="$1"
+    if have jq; then
+        if [ "$(printf '%s' "$_d" | jq -r '.ok' 2>/dev/null)" = "true" ]; then
+            printf '%s' "$_d" | jq -r '.data'
+            return 0
+        fi
+        echo "a11y: $(printf '%s' "$_d" | jq -r '.error // "error"')" >&2
+        return 1
+    fi
+    printf '%s\n' "$_d"
+    case "$_d" in *'"ok":true'*) return 0 ;; *) return 1 ;; esac
+}
+
+# send a short-named command with key/value argument pairs, over the active
+# transport. usage: send ACTION [key value]...
+send() {
+    if [ "$TRANSPORT" = http ]; then send_http "$@"; else send_intents "$@"; fi
+}
+
+send_http() {
+    _action="$1"; shift
+    _path=$(printf '%s' "$_action" | tr 'A-Z' 'a-z')
+    _body="{"
+    _first=1
+    while [ $# -gt 0 ]; do
+        [ $_first -eq 1 ] || _body="$_body,"
+        _body="$_body\"$1\":\"$(json_escape "$2")\""
+        _first=0
+        shift 2
+    done
+    _body="$_body}"
+    _resp=$(curl -sS -H "x-a11y-token: $TOKEN" -H "content-type: application/json" \
+        -X POST "http://$HOST/v1/$_path" -d "$_body" 2>/dev/null || true)
+    [ -n "$_resp" ] || { echo "a11y: no response from http://$HOST" >&2; return 1; }
+    emit "$_resp"
+}
+
+send_intents() {
+    _action="$1"; shift
+    # convert key/value pairs into "--es key value" while preserving order/spaces.
+    _count=$#
+    _i=0
+    while [ $_i -lt $_count ]; do
+        _k="$1"; _v="$2"; shift 2
+        set -- "$@" --es "$_k" "$_v"
+        _i=$(( _i + 2 ))
+    done
+    set -- broadcast -n "$COMPONENT" -a "$ACT_PREFIX$_action" --es token "$TOKEN" "$@"
+    _out=$(run_am_argv "$@" 2>/dev/null || true)
+    _dec=$(decode_output "$_out") || return 1
+    emit "$_dec"
+}
+
+cmd_status() {
+    [ "$TRANSPORT" = http ] && need_token
+    send STATUS
+}
+
+cmd_set_token() {
+    _t="${1:-}"
+    [ -n "$_t" ] || { printf 'paste token: ' >&2; read -r _t; }
+    mkdir -p "$A11Y_HOME"
+    ( umask 077; printf '%s' "$_t" > "$TOKEN_FILE" )
+    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+    echo "a11y: token saved to $TOKEN_FILE"
+}
+
+# re-download this script from the host server (served unauthenticated). default
+# destination is this script's own path. needs curl and the http surface on.
+cmd_update() {
+    have curl || die "update needs curl"
+    _dest="${1:-$0}"
+    _url="http://$HOST/cli/a11y"
+    _tmp="$_dest.new.$$"
+    if curl -sS -f "$_url" -o "$_tmp" 2>/dev/null; then
+        chmod +x "$_tmp" 2>/dev/null || true
+        mv "$_tmp" "$_dest" && echo "a11y: updated $_dest from $_url"
+    else
+        rm -f "$_tmp"
+        die "could not fetch $_url (is the http surface on?)"
+    fi
+}
+
+# pairing is intents-only (the receiver returns the token); for http/mcp copy the
+# token from the app ui into 'a11y set-token'.
+cmd_pair() {
+    _code="${1:-}"
+    if [ -z "$_code" ]; then printf 'enter pairing code: ' >&2; read -r _code; fi
+    _out=$(run_am_argv broadcast -n "$COMPONENT" -a "${ACT_PREFIX}PAIR" --es code "$_code" 2>/dev/null || true)
+    _dec=$(decode_output "$_out") || return 1
+    case "$_dec" in
+        *'"ok":true'*)
+            _token=$(printf '%s' "$_dec" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+            cmd_set_token "$_token" ;;
+        *)
+            _err=$(printf '%s' "$_dec" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+            echo "a11y: pairing failed: ${_err:-unknown}" >&2; return 1 ;;
+    esac
+}
+
+# view: dump the (filtered) tree.
+cmd_view() {
+    need_token
+    _filter=; _format=; _depth=; _pkg=; _fields=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --filter) _filter="$2"; shift 2 ;;
+            --format) _format="$2"; shift 2 ;;
+            --max-depth) _depth="$2"; shift 2 ;;
+            --package) _pkg="$2"; shift 2 ;;
+            --fields) _fields="$2"; shift 2 ;;
+            *) die "dump: unknown option $1" ;;
+        esac
+    done
+    set -- DUMP
+    [ -n "$_filter" ] && set -- "$@" filter "$_filter"
+    [ -n "$_format" ] && set -- "$@" format "$_format"
+    [ -n "$_depth" ]  && set -- "$@" max_depth "$_depth"
+    [ -n "$_pkg" ]    && set -- "$@" package "$_pkg"
+    [ -n "$_fields" ] && set -- "$@" fields "$_fields"
+    send "$@"
+}
+
+cmd_find() {
+    need_token
+    _query="${1:-}"; [ -n "$_query" ] || die "usage: a11y find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--format ...] [--fields ...] [--filter ...] [--max-depth N] [--package P]"
+    shift
+    _by=; _match=; _format=; _fields=; _depth=; _pkg=; _filter=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --by) _by="$2"; shift 2 ;;
+            --match) _match="$2"; shift 2 ;;
+            --format) _format="$2"; shift 2 ;;
+            --fields) _fields="$2"; shift 2 ;;
+            --max-depth) _depth="$2"; shift 2 ;;
+            --package) _pkg="$2"; shift 2 ;;
+            --filter) _filter="$2"; shift 2 ;;
+            *) die "find: unknown option $1" ;;
+        esac
+    done
+    set -- FIND query "$_query"
+    [ -n "$_by" ]     && set -- "$@" by "$_by"
+    [ -n "$_match" ]  && set -- "$@" match "$_match"
+    [ -n "$_format" ] && set -- "$@" format "$_format"
+    [ -n "$_fields" ] && set -- "$@" fields "$_fields"
+    [ -n "$_depth" ]  && set -- "$@" max_depth "$_depth"
+    [ -n "$_pkg" ]    && set -- "$@" package "$_pkg"
+    [ -n "$_filter" ] && set -- "$@" filter "$_filter"
+    send "$@"
+}
+
+point_gesture() {
+    _action="$1"; shift
+    [ $# -ge 2 ] || die "usage: a11y <gesture> X Y [--duration MS]"
+    _x="$1"; _y="$2"; shift 2
+    _dur=
+    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "unknown option $1" ;; esac; done
+    set -- "$_action" x "$_x" y "$_y"
+    [ -n "$_dur" ] && set -- "$@" duration "$_dur"
+    send "$@"
+}
+
+cmd_tap() { need_token; point_gesture TAP "$@"; }
+cmd_long() { need_token; point_gesture LONG_PRESS "$@"; }
+
+cmd_swipe() {
+    need_token
+    [ $# -ge 4 ] || die "usage: a11y swipe X1 Y1 X2 Y2 [--duration MS]"
+    _x1="$1"; _y1="$2"; _x2="$3"; _y2="$4"; shift 4
+    _dur=
+    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "swipe: unknown option $1" ;; esac; done
+    set -- SWIPE x "$_x1" y "$_y1" x2 "$_x2" y2 "$_y2"
+    [ -n "$_dur" ] && set -- "$@" duration "$_dur"
+    send "$@"
+}
+
+cmd_click() {
+    need_token
+    _by=; _query=; _match=; _x=; _y=
+    case "${1:-}" in
+        --id) _by=id; _query="$2"; shift 2 ;;
+        --text) _by=text; _query="$2"; shift 2 ;;
+        --class) _by=class; _query="$2"; shift 2 ;;
+        --desc) _by=desc; _query="$2"; shift 2 ;;
+        *) [ $# -ge 2 ] || die "usage: a11y click X Y | --id ID | --text T [--match M]"
+           _x="$1"; _y="$2"; shift 2 ;;
+    esac
+    while [ $# -gt 0 ]; do case "$1" in --match) _match="$2"; shift 2 ;; *) die "click: unknown option $1" ;; esac; done
+    if [ -n "$_by" ]; then
+        set -- CLICK by "$_by" query "$_query"
+        [ -n "$_match" ] && set -- "$@" match "$_match"
+    else
+        set -- CLICK by coords x "$_x" y "$_y"
+    fi
+    send "$@"
+}
+
+cmd_text() {
+    need_token
+    _value="${1:-}"; [ -n "$_value" ] || die "usage: a11y text VALUE --id ID | --text T [--match M]"
+    shift
+    _by=; _query=; _match=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --id) _by=id; _query="$2"; shift 2 ;;
+            --text) _by=text; _query="$2"; shift 2 ;;
+            --class) _by=class; _query="$2"; shift 2 ;;
+            --desc) _by=desc; _query="$2"; shift 2 ;;
+            --match) _match="$2"; shift 2 ;;
+            *) die "text: unknown option $1" ;;
+        esac
+    done
+    [ -n "$_query" ] || die "text: a target is required (--id, --text, --class, --desc)"
+    set -- SET_TEXT text "$_value" by "$_by" query "$_query"
+    [ -n "$_match" ] && set -- "$@" match "$_match"
+    send "$@"
+}
+
+cmd_global() { need_token; send GLOBAL nav "$1"; }
+
+cmd_launch() {
+    need_token
+    _pkg=; _component=; _action=; _uri=
+    case "${1:-}" in
+        "") die "usage: a11y launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] [--package PKG] | --uri URI" ;;
+        --*) ;;
+        *) _pkg="$1"; shift ;;
+    esac
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --component) _component="$2"; shift 2 ;;
+            --action) _action="$2"; shift 2 ;;
+            --uri) _uri="$2"; shift 2 ;;
+            --package) _pkg="$2"; shift 2 ;;
+            *) die "launch: unknown option $1" ;;
+        esac
+    done
+    set -- LAUNCH
+    [ -n "$_pkg" ]       && set -- "$@" package "$_pkg"
+    [ -n "$_component" ] && set -- "$@" component "$_component"
+    [ -n "$_action" ]    && set -- "$@" action "$_action"
+    [ -n "$_uri" ]       && set -- "$@" uri "$_uri"
+    send "$@"
+}
+
+usage() {
+    cat <<EOF
+a11y -- drive the android a11y automation service from a shell.
+transport: $TRANSPORT (http host $HOST; intents via $AM)
+
+setup:
+  a11y pair [CODE]           pair over intents; saves the token (cli path)
+  a11y set-token [TOKEN]     save a token copied from the app ui (http/mcp path)
+  a11y update [DEST]         re-download this script from the host server
+  a11y status                service enabled? which surfaces are on?
+
+view (filter/query run on-device to keep output small):
+  a11y dump [--filter interactive|text|visible|all] [--format tree|flat|compact]
+            [--max-depth N] [--package PKG] [--fields class,text,desc,id,bounds,center,actions]
+  a11y find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [+ dump opts]
+
+interact:
+  a11y tap X Y [--duration MS]        a11y longpress X Y [--duration MS]
+  a11y swipe X1 Y1 X2 Y2 [--duration MS]
+  a11y click X Y | --id ID | --text T | --class C | --desc D [--match M]
+  a11y text VALUE --id ID | --text T [--match M]
+  a11y back | home | recents | notifications
+  a11y launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
+
+results are json on stdout (install jq for pretty output); nonzero exit on error.
+EOF
+}
+
+cmd="${1:-help}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+    status) cmd_status "$@" ;;
+    pair) cmd_pair "$@" ;;
+    set-token) cmd_set_token "$@" ;;
+    update) cmd_update "$@" ;;
+    dump|view) cmd_view "$@" ;;
+    find) cmd_find "$@" ;;
+    tap) cmd_tap "$@" ;;
+    longpress|long) cmd_long "$@" ;;
+    swipe) cmd_swipe "$@" ;;
+    click) cmd_click "$@" ;;
+    text|settext) cmd_text "$@" ;;
+    back) cmd_global back ;;
+    home) cmd_global home ;;
+    recents) cmd_global recents ;;
+    notifications|notif) cmd_global notifications ;;
+    launch) cmd_launch "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage; exit 1 ;;
+esac

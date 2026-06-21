@@ -1,0 +1,14 @@
+# pinned toolchain for deterministic builds.
+# the android sdk platform/build-tools are license-gated and large, so they are
+# not pinned here. see CONTRIBUTING.md.
+
+# android gradle plugin requires jdk 17; mise activates it and exports JAVA_HOME.
+[tools]
+java = "temurin-17"
+gradle = "8.7"
+
+# default the sdk to ~/android-sdk so the build needs no machine-specific paths
+# checked into the repo. override by exporting ANDROID_HOME, or (it takes
+# precedence) by setting sdk.dir in a local.properties (gitignored).
+[env]
+ANDROID_HOME = "{{ env.HOME }}/android-sdk"
