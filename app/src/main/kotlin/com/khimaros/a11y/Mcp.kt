@@ -1,6 +1,7 @@
 package com.khimaros.a11y
 
 import android.content.Context
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -46,10 +47,14 @@ object Mcp {
         val args = params?.optJSONObject("arguments") ?: JSONObject()
         val get = { k: String -> if (args.has(k) && !args.isNull(k)) args.get(k).toString() else null }
         val result = Commands.run(ctx, action, get)
+        val data = result.data
+        if (result.ok && data is ByteArray) {
+            return imageResult(data, get(Extras.FORMAT))
+        }
         val text = when {
             !result.ok -> result.error ?: "error"
-            result.data is String -> result.data
-            result.data != null -> result.data.toString()
+            data is String -> data
+            data != null -> data.toString()
             else -> "ok"
         }
         return toolResult(text, isError = !result.ok)
@@ -58,6 +63,15 @@ object Mcp {
     private fun toolResult(text: String, isError: Boolean): JSONObject = JSONObject()
         .put("content", JSONArray().put(JSONObject().put("type", "text").put("text", text)))
         .put("isError", isError)
+
+    private fun imageResult(bytes: ByteArray, format: String?): JSONObject {
+        val mime = if (format == "jpeg" || format == "jpg") "image/jpeg" else "image/png"
+        val block = JSONObject()
+            .put("type", "image")
+            .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
+            .put("mimeType", mime)
+        return JSONObject().put("content", JSONArray().put(block)).put("isError", false)
+    }
 
     private fun rpcResult(id: Any?, result: Any): String = JSONObject()
         .put("jsonrpc", "2.0")
@@ -84,6 +98,7 @@ object Mcp {
         "a11y_set_text" to Cmd.SET_TEXT,
         "a11y_global" to Cmd.GLOBAL,
         "a11y_launch" to Cmd.LAUNCH,
+        "a11y_screenshot" to Cmd.SCREENSHOT,
     )
 
     private fun prop(type: String, desc: String, enum: List<String>? = null): JSONObject {
@@ -142,5 +157,10 @@ object Mcp {
                 "component" to prop("string", "explicit 'pkg/.Activity'"),
                 "action" to prop("string", "an intent action"),
                 "uri" to prop("string", "data uri (with action, or opened via ACTION_VIEW)")))),
+        tool("a11y_screenshot", "capture the screen as an image -- a last resort; prefer the text tree (dump/find) which is far cheaper",
+            schema(emptyList(), mapOf(
+                "format" to prop("string", "png | jpeg", listOf("png", "jpeg")),
+                "quality" to prop("integer", "jpeg quality 1-100"),
+                "scale" to prop("number", "downscale factor 0-1")))),
     ))
 }

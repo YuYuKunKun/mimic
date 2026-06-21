@@ -25,8 +25,22 @@ available and auto-selects one, so you just run `a11y <command>`.
 
 check it works:
 ```
-a11y status            # -> service enabled? which surfaces on?
+a11y status            # -> {"ok":true,"data":{"service_enabled":true,...}}
 ```
+
+## output (json)
+
+every command prints a json envelope on stdout and exits nonzero on error:
+
+```
+{"ok": true, "data": <payload>}
+{"ok": false, "error": "..."}
+```
+
+parse it as json -- that is the intended interface, and it needs no extra tools.
+`data` is the payload: an object/array for tree/flat dumps and status, a string
+for `--format compact` (newline-joined lines; json-escaped, so a parser restores
+the tabs/newlines), and `{"performed":true}` for actions.
 
 don't have the cli yet? with the **local http** surface on, the server serves it
 (no token needed):
@@ -34,6 +48,12 @@ don't have the cli yet? with the **local http** surface on, the server serves it
 curl -s http://127.0.0.1:8473/cli/a11y -o a11y && chmod +x a11y
 ```
 later, `a11y update` re-downloads the latest from the same server.
+
+the server also serves this skill doc, so you can refresh it to match the
+installed app version (also no token needed) -- write it over your local copy:
+```
+curl -s http://127.0.0.1:8473/SKILL.md -o SKILL.md
+```
 
 ## keep context small (do this for agent use)
 
@@ -46,9 +66,9 @@ everything and filtering locally:
   ```
 - **filter when you must dump:** `--filter interactive` keeps actionable nodes;
   `--filter text` keeps text-bearing nodes.
-- **use the compact format:** one terse line per node,
-  `cx,cy<TAB>class<TAB>label<TAB>id` -- cheapest, and the leading `cx,cy` is
-  exactly where to tap:
+- **use the compact format:** `data` becomes a single newline-joined string of
+  `cx,cy<TAB>class<TAB>label<TAB>id` lines -- the cheapest representation, and the
+  leading `cx,cy` is exactly where to tap:
   ```
   a11y dump --filter interactive --format compact
   ```
@@ -82,18 +102,31 @@ launch an app or activity:
   a11y launch --action ACTION [--uri URI] [--package PKG]
   a11y launch --uri URI                open a uri (ACTION_VIEW)
 
+screenshot (LAST RESORT -- see below):
+  a11y screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
+
 setup:
   a11y pair [CODE]                     exchange the app's 6-digit code for a token
   a11y set-token [TOKEN]               save a token copied from the app
   a11y update [DEST]                   re-download this script from the server
 ```
 
+## screenshot is a last resort
+
+prefer the text tree (`dump`/`find`) for almost everything -- it is far cheaper
+in tokens, gives you exact tap coordinates and ids, and is reliable. only reach
+for `screenshot` when the tree is genuinely insufficient: canvas/`SurfaceView`
+content, webview/game pixels, images, or visual state the accessibility tree does
+not expose. `a11y screenshot` writes a png to a unique `/tmp` file (or `PATH`) and
+prints the path; pass `--scale 0.5` / `--format jpeg` to shrink it. it is
+rate-limited by android to about one per second.
+
 note: `launch` is subject to android background-activity-launch rules -- it is
 reliable when the device is unlocked and the app was recently foreground; a
 purely background launch may be blocked by the system.
 
-output is json on stdout; install `jq` for pretty output. a failed command
-prints its error to stderr and exits nonzero.
+output is the json envelope on stdout (see "output (json)" above); a failed
+command prints its error to stderr and exits nonzero.
 
 ## recipes
 

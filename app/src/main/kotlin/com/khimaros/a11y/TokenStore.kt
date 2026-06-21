@@ -35,6 +35,13 @@ object TokenStore {
         return token
     }
 
+    // forget the token entirely: every paired client is rejected until a new
+    // token is minted (by showing the pairing code/token again).
+    fun clear(ctx: Context) {
+        prefs(ctx).edit().remove(KEY_TOKEN).apply()
+        pending = null
+    }
+
     // begin a cli pairing: ensure a token exists (without rotating an existing
     // one, so http/mcp clients keep working), then bind a 6-digit code to it.
     fun beginPairing(ctx: Context, nowMs: Long): String {

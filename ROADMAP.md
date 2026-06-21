@@ -37,8 +37,16 @@
 - [x] compact format sanitizes whitespace in labels (fix found by e2e)
 - [x] http surface serves the cli + SKILL for bootstrap/update (`a11y update`)
 - [x] activity launcher (LAUNCH) on all surfaces + cli `launch` + mcp a11y_launch
-- [x] on-device verification: 16/16 e2e pass on a real pixel 8 pro (all surfaces,
-      bootstrap routes, and app launch)
+
+## milestone 3: screenshot, output, pairing controls (done; verified on device)
+
+- [x] cli outputs raw json by default (no deps); `--pretty` opt-in needs jq and
+      errors clearly when absent; SKILL speaks json, README documents `--pretty`
+- [x] screenshot (SCREENSHOT) via takeScreenshot: http raw image, mcp image block,
+      intents base64; cli `screenshot [PATH]` writes a /tmp file and prints it
+- [x] "clear paired" in the ui forgets the token (rejects all clients)
+- [x] on-device verification: 18/18 e2e pass on a real pixel 8 pro (all surfaces,
+      bootstrap, launch, and png+jpeg screenshot)
 
 ## backlog
 
@@ -46,4 +54,5 @@
 - optional file-based result delivery for very large intent trees.
 - multi-window / window-list view beyond the active window.
 - per-client tokens; unpair a single client.
+- listing installed packages / a package's launchable activities (dropped for now).
 - gesture paths beyond straight-line swipe (multi-point, pinch).

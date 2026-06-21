@@ -17,6 +17,7 @@ object Cmd {
     const val SET_TEXT = "SET_TEXT"
     const val GLOBAL = "GLOBAL"
     const val LAUNCH = "LAUNCH"
+    const val SCREENSHOT = "SCREENSHOT"
     const val STATUS = "STATUS"
     const val PAIR = "PAIR"
 }
@@ -82,6 +83,10 @@ object Extras {
     const val COMPONENT = "component"  // "pkg/.Activity"
     const val ACTION = "action"        // an intent action
     const val URI = "uri"              // data uri (with action, or ACTION_VIEW)
+
+    // SCREENSHOT: format reuses FORMAT (png | jpeg)
+    const val QUALITY = "quality"      // jpeg quality 1-100
+    const val SCALE = "scale"          // downscale factor 0-1
 }
 
 object Defaults {
@@ -95,6 +100,9 @@ object Defaults {
     // kept under the ~10s broadcast-receiver dispatch window so a slow gesture
     // cannot hang the ordered broadcast and stall `am broadcast`.
     const val GESTURE_TIMEOUT_MS = 8_000L
+    const val SCREENSHOT_TIMEOUT_MS = 5_000L
+    const val SCREENSHOT_QUALITY = 90
+    const val SCREENSHOT_FORMAT = "png"
 
     // pairing
     const val CODE_TTL_MS = 5 * 60_000L

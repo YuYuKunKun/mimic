@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "android-a11y-automation"
+rootProject.name = "android-a11y"
 include(":app")

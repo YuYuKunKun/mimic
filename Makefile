@@ -1,12 +1,18 @@
 # prefer the gradle wrapper; else the mise-pinned gradle; else a system gradle.
 GRADLE := $(if $(wildcard ./gradlew),./gradlew,$(if $(shell command -v mise),mise exec -- gradle,gradle))
 
-.PHONY: all build install uninstall test-e2e precommit lint clean wrapper
+.PHONY: all build release install uninstall test-e2e precommit lint clean wrapper
 
 all: build
 
 build:
 	$(GRADLE) assembleDebug
+
+# assemble the release apk. signed if A11Y_KEYSTORE (+ A11Y_KEYSTORE_PASS /
+# A11Y_KEY_ALIAS / A11Y_KEY_PASS) is set, otherwise unsigned. output is under
+# app/build/outputs/apk/release/.
+release:
+	$(GRADLE) assembleRelease
 
 install:
 	$(GRADLE) installDebug

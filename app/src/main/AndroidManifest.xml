@@ -64,6 +64,7 @@
                 <action android:name="com.khimaros.a11y.action.SET_TEXT" />
                 <action android:name="com.khimaros.a11y.action.GLOBAL" />
                 <action android:name="com.khimaros.a11y.action.LAUNCH" />
+                <action android:name="com.khimaros.a11y.action.SCREENSHOT" />
                 <action android:name="com.khimaros.a11y.action.PAIR" />
                 <action android:name="com.khimaros.a11y.action.STATUS" />
             </intent-filter>

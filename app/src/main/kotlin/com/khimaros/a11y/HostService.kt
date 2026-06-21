@@ -94,19 +94,30 @@ class HostService : Service() {
             }
             req.path.startsWith("/v1/") -> {
                 if (!AppState.http(this)) return respond(out, "403 Forbidden", error("http surface disabled"))
-                respond(out, "200 OK", rest(req).toString())
+                rest(req, out)
             }
             else -> respond(out, "404 Not Found", error("no such route: ${req.path}"))
         }
     }
 
-    // /v1/status (GET) or /v1/<cmd> (POST with a json body of arguments).
-    private fun rest(req: Request): JSONObject {
+    // /v1/status (GET) or /v1/<cmd> (POST with a json body of arguments). binary
+    // payloads (screenshot) are returned as raw image bytes; everything else as
+    // the json envelope.
+    private fun rest(req: Request, out: OutputStream) {
         val cmd = req.path.removePrefix("/v1/").uppercase()
         val args = if (req.body.isNotBlank()) JSONObject(req.body) else JSONObject()
-        val get = { k: String -> if (args.has(k) && !args.isNull(k)) args.get(k).toString() else null }
-        return Commands.run(this, cmd, get).toJson()
+        val get = { k: String -> req.query[k] ?: if (args.has(k) && !args.isNull(k)) args.get(k).toString() else null }
+        val result = Commands.run(this, cmd, get)
+        val data = result.data
+        if (result.ok && data is ByteArray) {
+            respondBytes(out, "200 OK", data, imageMime(get(Extras.FORMAT)))
+        } else {
+            respond(out, "200 OK", result.toJson().toString())
+        }
     }
+
+    private fun imageMime(format: String?): String =
+        if (format == "jpeg" || format == "jpg") "image/jpeg" else "image/png"
 
     // ---- minimal http ----
 

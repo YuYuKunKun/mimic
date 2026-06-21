@@ -1,16 +1,24 @@
 package com.khimaros.a11y
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.accessibilityservice.GestureDescription
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 // the live accessibility connection. a process-wide singleton so CommandReceiver
 // (same process) can call straight into it. holds no command state -- every view
@@ -85,6 +93,55 @@ class A11yService : AccessibilityService() {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    // ---- screenshot ----
+
+    // capture the default display and encode it. blocks (off the main thread) for
+    // the framework callback. the system rate-limits this to about one per second.
+    // requires android:canTakeScreenshot in the service config (api 30+).
+    @SuppressLint("NewApi")
+    fun captureScreenshot(format: String, quality: Int, scale: Double): ByteArray? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val latch = CountDownLatch(1)
+        val result = AtomicReference<ByteArray?>(null)
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+            override fun onSuccess(screenshot: ScreenshotResult) {
+                try {
+                    result.set(encode(screenshot, format, quality, scale))
+                } finally {
+                    latch.countDown()
+                }
+            }
+            override fun onFailure(errorCode: Int) {
+                latch.countDown()
+            }
+        })
+        latch.await(Defaults.SCREENSHOT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        return result.get()
+    }
+
+    @SuppressLint("NewApi")
+    private fun encode(shot: ScreenshotResult, format: String, quality: Int, scale: Double): ByteArray? {
+        val buffer = shot.hardwareBuffer
+        try {
+            val hw = Bitmap.wrapHardwareBuffer(buffer, shot.colorSpace) ?: return null
+            // hardware bitmaps cannot be read for compression; copy to software first.
+            var bmp = hw.copy(Bitmap.Config.ARGB_8888, false)
+            hw.recycle()
+            if (scale in 0.05..0.999) {
+                val w = (bmp.width * scale).toInt().coerceAtLeast(1)
+                val h = (bmp.height * scale).toInt().coerceAtLeast(1)
+                bmp = Bitmap.createScaledBitmap(bmp, w, h, true)
+            }
+            val out = ByteArrayOutputStream()
+            val fmt = if (format == "jpeg" || format == "jpg") Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG
+            bmp.compress(fmt, quality.coerceIn(1, 100), out)
+            bmp.recycle()
+            return out.toByteArray()
+        } finally {
+            buffer.close()
+        }
     }
 
     // ---- gesture plumbing ----

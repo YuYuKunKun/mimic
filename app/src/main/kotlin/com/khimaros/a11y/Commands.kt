@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Base64
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONObject
 
@@ -14,8 +15,14 @@ import org.json.JSONObject
 object Commands {
 
     data class Result(val ok: Boolean, val data: Any?, val error: String?) {
+        // binary payloads (screenshot bytes) are base64-encoded for json consumers;
+        // transports that can send bytes directly (http) check for ByteArray first.
         fun toJson(): JSONObject = JSONObject().put("ok", ok).also { o ->
-            data?.let { o.put("data", it) }
+            when (val d = data) {
+                null -> {}
+                is ByteArray -> o.put("data", Base64.encodeToString(d, Base64.NO_WRAP))
+                else -> o.put("data", d)
+            }
             error?.let { o.put("error", it) }
         }
     }
@@ -57,7 +64,17 @@ object Commands {
         Cmd.CLICK -> click(service, get)
         Cmd.SET_TEXT -> setText(service, get)
         Cmd.GLOBAL -> performed(service.globalNav(get(Extras.NAV) ?: ""))
+        Cmd.SCREENSHOT -> screenshot(service, get)
         else -> fail("unknown command: $action")
+    }
+
+    private fun screenshot(service: A11yService, get: (String) -> String?): Result {
+        val format = get(Extras.FORMAT) ?: Defaults.SCREENSHOT_FORMAT
+        val quality = get(Extras.QUALITY)?.toIntOrNull() ?: Defaults.SCREENSHOT_QUALITY
+        val scale = get(Extras.SCALE)?.toDoubleOrNull() ?: 1.0
+        val bytes = service.captureScreenshot(format, quality, scale)
+            ?: return fail("screenshot failed (unsupported, rate-limited, or capture denied)")
+        return ok(bytes)
     }
 
     private fun view(service: A11yService, action: String, get: (String) -> String?): Result {

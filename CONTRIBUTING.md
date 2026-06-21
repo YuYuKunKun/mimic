@@ -42,7 +42,30 @@ make            # assemble debug apk
 make install    # adb install onto a connected device/emulator
 make test-e2e   # python e2e over adb (skips when no device attached)
 make precommit  # run before committing: lint + build + e2e
+make release    # assemble release apk (see signing below)
 ```
+
+## release
+
+`make release` runs `assembleRelease`; output is under
+`app/build/outputs/apk/release/`. signing is env-gated, and the keystore is never
+checked into the repo:
+
+- with no env set, you get `app-release-unsigned.apk` (sign it yourself with
+  `zipalign` + `apksigner`).
+- set the signing env to get a signed `app-release.apk` directly:
+
+  ```
+  # one-time: create a keystore kept outside the repo
+  keytool -genkeypair -v -keystore ~/.android/a11y-release.jks -alias a11y \
+      -keyalg RSA -keysize 2048 -validity 10000
+
+  A11Y_KEYSTORE=~/.android/a11y-release.jks A11Y_KEYSTORE_PASS=... \
+  A11Y_KEY_ALIAS=a11y A11Y_KEY_PASS=... make release
+  ```
+
+  updates to an installed copy must use the same key (android rejects a re-sign
+  with a different key unless you uninstall first).
 
 ## tests
 

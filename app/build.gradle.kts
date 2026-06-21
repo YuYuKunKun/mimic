@@ -12,12 +12,29 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
+    }
+
+    // env-gated release signing; the keystore stays out of the repo. set
+    // A11Y_KEYSTORE (+ A11Y_KEYSTORE_PASS / A11Y_KEY_ALIAS / A11Y_KEY_PASS) to
+    // produce a signed release apk; without it, assembleRelease stays unsigned.
+    // providers.environmentVariable reads the invoking env even under the daemon.
+    fun env(name: String): String? = providers.environmentVariable(name).orNull
+    val releaseSigning = env("A11Y_KEYSTORE")?.let { path ->
+        val keystore = file(path)
+        if (!keystore.exists()) null
+        else signingConfigs.create("release") {
+            storeFile = keystore
+            storePassword = env("A11Y_KEYSTORE_PASS")
+            keyAlias = env("A11Y_KEY_ALIAS")
+            keyPassword = env("A11Y_KEY_PASS")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = releaseSigning
         }
     }
 

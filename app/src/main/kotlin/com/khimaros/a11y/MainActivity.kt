@@ -32,6 +32,10 @@ class MainActivity : Activity() {
             val code = TokenStore.beginPairing(this, System.currentTimeMillis())
             creds.text = getString(R.string.creds_fmt, code, TokenStore.token(this))
         }
+        findViewById<Button>(R.id.clear_paired).setOnClickListener {
+            TokenStore.clear(this)
+            creds.text = getString(R.string.cleared)
+        }
 
         bindSurface(R.id.sw_intents, getString(R.string.sw_intents), AppState.intents(this)) {
             AppState.setIntents(this, it)

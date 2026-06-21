@@ -83,11 +83,13 @@ decode_output() {
     printf '%s' "$_b64" | base64 -d 2>/dev/null
 }
 
-# print the payload (jq pretty-prints json and unwraps strings); on an error
-# envelope, print the message to stderr and fail.
+# print the response. default: the raw json envelope (no dependencies). with
+# --pretty: use jq to unwrap .data (raw text for strings, pretty json otherwise),
+# erroring clearly if jq is absent. exit status reflects the ok flag.
 emit() {
     _d="$1"
-    if have jq; then
+    if [ "${PRETTY:-0}" = 1 ]; then
+        have jq || die "--pretty requires jq, which is not installed (omit --pretty for raw json)"
         if [ "$(printf '%s' "$_d" | jq -r '.ok' 2>/dev/null)" = "true" ]; then
             printf '%s' "$_d" | jq -r '.data'
             return 0
@@ -331,6 +333,50 @@ cmd_launch() {
     send "$@"
 }
 
+# capture the screen to a file (a unique /tmp file by default) and print the path.
+# binary output, so it bypasses the json envelope path.
+cmd_screenshot() {
+    need_token
+    _dest=; _format=png; _quality=; _scale=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --format) _format="$2"; shift 2 ;;
+            --quality) _quality="$2"; shift 2 ;;
+            --scale) _scale="$2"; shift 2 ;;
+            -*) die "screenshot: unknown option $1" ;;
+            *) _dest="$1"; shift ;;
+        esac
+    done
+    if [ -z "$_dest" ]; then
+        _base=$(mktemp "${TMPDIR:-/tmp}/a11y-screenshot-XXXXXX") || die "could not create temp file"
+        _dest="$_base.$_format"; mv "$_base" "$_dest"
+    fi
+    if [ "$TRANSPORT" = http ]; then
+        _body="{\"format\":\"$_format\""
+        [ -n "$_quality" ] && _body="$_body,\"quality\":\"$_quality\""
+        [ -n "$_scale" ] && _body="$_body,\"scale\":\"$_scale\""
+        _body="$_body}"
+        curl -sS -H "x-a11y-token: $TOKEN" -H 'content-type: application/json' \
+            -X POST "http://$HOST/v1/screenshot" -d "$_body" -o "$_dest" 2>/dev/null
+        # an error comes back as a json envelope, not image bytes
+        if head -c1 "$_dest" 2>/dev/null | grep -q '{'; then
+            _err=$(sed -n 's/.*"error":"\([^"]*\)".*/\1/p' "$_dest"); rm -f "$_dest"
+            die "screenshot failed: ${_err:-unknown}"
+        fi
+    else
+        set -- broadcast -n "$COMPONENT" -a "${ACT_PREFIX}SCREENSHOT" --es token "$TOKEN" --es format "$_format"
+        [ -n "$_quality" ] && set -- "$@" --es quality "$_quality"
+        [ -n "$_scale" ] && set -- "$@" --es scale "$_scale"
+        _dec=$(decode_output "$(run_am_argv "$@" 2>/dev/null || true)") || { rm -f "$_dest"; return 1; }
+        case "$_dec" in
+            *'"ok":true'*) printf '%s' "$_dec" | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | base64 -d > "$_dest" 2>/dev/null ;;
+            *) _err=$(printf '%s' "$_dec" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p'); rm -f "$_dest"; die "screenshot failed: ${_err:-unknown}" ;;
+        esac
+    fi
+    [ -s "$_dest" ] || { rm -f "$_dest"; die "screenshot produced no data (rate-limited? try again)"; }
+    printf '%s\n' "$_dest"
+}
+
 usage() {
     cat <<EOF
 a11y -- drive the android a11y automation service from a shell.
@@ -354,10 +400,25 @@ interact:
   a11y text VALUE --id ID | --text T [--match M]
   a11y back | home | recents | notifications
   a11y launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
+  a11y screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
+                  (last resort; prefer the text tree. writes a /tmp file, prints the path)
 
-results are json on stdout (install jq for pretty output); nonzero exit on error.
+output is the raw json envelope on stdout; nonzero exit on error.
+prefix any command with --pretty for human-friendly output (requires jq):
+  a11y --pretty dump --filter interactive --format compact
 EOF
 }
+
+# global flags (before the subcommand): --pretty (jq, human-friendly), --raw (default).
+PRETTY="${A11Y_PRETTY:-0}"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --pretty) PRETTY=1; shift ;;
+        --raw) PRETTY=0; shift ;;
+        --) shift; break ;;
+        *) break ;;
+    esac
+done
 
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
@@ -377,6 +438,7 @@ case "$cmd" in
     recents) cmd_global recents ;;
     notifications|notif) cmd_global notifications ;;
     launch) cmd_launch "$@" ;;
+    screenshot|shot) cmd_screenshot "$@" ;;
     help|-h|--help) usage ;;
     *) usage; exit 1 ;;
 esac

@@ -22,6 +22,7 @@ server binds loopback only), no notification reading, no app launching.
 - tap / long-press / swipe by coordinate; click or set-text on a node found by
   text or resource-id; back / home / recents / notifications.
 - launch an app or activity by package, component, or action/uri.
+- capture a screenshot (a last resort; the text tree is preferred and far cheaper).
 - a `a11y` shell cli that works from termux/proot/host, and a `SKILL.md`.
 
 ## requirements
@@ -34,6 +35,7 @@ server binds loopback only), no notification reading, no app launching.
 ```
 make            # assemble the debug apk
 make install    # install onto a connected device/emulator (adb)
+make release    # assemble the release apk (env-gated signing; see CONTRIBUTING)
 ```
 
 the build needs an android sdk. `mise` pins the toolchain; point the build at
@@ -73,6 +75,17 @@ a11y click --id com.app:id/submit # click a node by resource-id
 a11y text "hello" --id com.app:id/search
 a11y back                         # global navigation
 a11y launch com.android.settings  # launch an app
+a11y screenshot                   # capture screen -> /tmp file (last resort)
+```
+
+every command prints a json envelope (`{"ok":...,"data":...}`) and exits nonzero
+on error -- no tools required. for human-friendly output at a terminal, prefix
+any command with `--pretty`, which unwraps and formats the payload (a compact
+dump becomes tab-separated lines). `--pretty` requires `jq` and errors clearly if
+it is missing:
+
+```
+a11y --pretty dump --filter interactive --format compact
 ```
 
 see [SKILL.md](SKILL.md) for the full `a11y` cli reference and guidance for
@@ -84,7 +97,8 @@ agents on keeping context small; the rest/mcp/intent protocols behind it are in
 two independent gates protect the device: the accessibility service must be
 enabled by you in settings, and every command on every surface must carry the
 secret token. the token is stored in app-private storage (unreadable by other
-apps without root); rotating it invalidates old clients.
+apps without root). **clear paired** in the app forgets the token, rejecting every
+client until you reveal a new one.
 
 the localhost socket is reachable by any local app, and the intents receiver is
 exported -- the token is what makes unauthorized attempts fail. treat it as a

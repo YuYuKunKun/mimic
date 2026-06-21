@@ -61,16 +61,21 @@ http/mcp surfaces are reachable from proot, native termux, and the host (via
 ## command core and protocol
 
 commands have surface-agnostic short names (`Cmd`): `DUMP`, `FIND`, `TAP`,
-`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `LAUNCH`, `STATUS` (plus
-intents-only `PAIR`). arguments are uniform string keys (`Extras`): view ->
-`format` (tree|flat|compact), `filter` (interactive|text|visible|all),
+`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `LAUNCH`, `SCREENSHOT`,
+`STATUS` (plus intents-only `PAIR`). arguments are uniform string keys (`Extras`):
+view -> `format` (tree|flat|compact), `filter` (interactive|text|visible|all),
 `max_depth`, `package`, `fields`, and for query `by` (text|id|class|desc),
 `query`, `match` (exact|contains|regex); interact -> `x`,`y`,`x2`,`y2`,`duration`,
-`nav`,`text`; launch -> `package`,`component`,`action`,`uri`.
+`nav`,`text`; launch -> `package`,`component`,`action`,`uri`; screenshot ->
+`format` (png|jpeg), `quality`, `scale`.
 
 `LAUNCH` and `STATUS` do not need the accessibility service; the rest do.
 launching uses the service (or app) context to `startActivity` and is subject to
-android background-activity-launch rules.
+android background-activity-launch rules. `SCREENSHOT` uses the framework's
+`takeScreenshot` (config `canTakeScreenshot`, api 30+, rate-limited ~1/sec) and
+returns image bytes -- `Commands.Result.data` is a `ByteArray`. http sends it raw
+(`image/png|jpeg`), mcp wraps it in an image content block, and json consumers
+(intents, `toJson`) get base64.
 
 each surface maps its transport onto this:
 
@@ -127,8 +132,10 @@ loopback bind, is the real gate).
 other apps without root) and compares candidates in constant time. it is obtained
 two ways: copied from the app ui (http/mcp), or via the intents pairing handshake
 -- the app shows a time-limited, attempt-limited 6-digit code that the cli
-exchanges for the token (so a long secret need not be typed). rotating the token
-invalidates old clients.
+exchanges for the token (so a long secret need not be typed). showing the
+code/token only mints a token when none exists, so it never silently invalidates
+a working client; "clear paired" forgets the token, rejecting every client until a
+new one is shown.
 
 ## clients
 

@@ -12,12 +12,12 @@ of capabilities to external automation, over one or more local surfaces:
 - **interact**: drive the ui (tap, long press, swipe, click, set text, and the
   global navigation actions back/home/recents/notifications).
 - **launch**: start an app or activity (by package, component, or action/uri).
+- **capture**: take a screenshot (a last resort; the text tree is preferred).
 
-nothing else. no screenshots, no off-device network, no notification reading, no
-contact/phone/storage access. the one networking facility is a
-loopback-only (127.0.0.1) server for on-device clients; data never leaves the
-device. the permission surface stays as small as the accessibility framework and
-that local server require.
+nothing else. no off-device network, no notification reading, no contact/phone/
+storage access. the one networking facility is a loopback-only (127.0.0.1) server
+for on-device clients; data never leaves the device. the permission surface stays
+as small as the accessibility framework and that local server require.
 
 ## R1 view
 
@@ -44,6 +44,10 @@ that local server require.
   stale when the screen changes.
 - R2.6 launch an app or activity by package, explicit component, or action/uri.
   this is subject to android background-activity-launch rules.
+- R2.7 capture a screenshot (png/jpeg, optional downscale) via the accessibility
+  framework. http returns raw image bytes, mcp an image content block, intents
+  base64; the cli writes it to a file. it is a last resort relative to the tree,
+  and is rate-limited by android to about one per second.
 
 ## R3 surfaces and protocol
 
@@ -76,7 +80,10 @@ that local server require.
 - R4.4 the token is stored only in app-private storage (unreadable by other apps
   without root) and compared in constant time. the ui can reveal it for client
   config.
-- R4.5 the user can rotate the token, invalidating old clients.
+- R4.5 the user can clear pairing from the app (forgetting the token), which
+  rejects every paired client until a new token is shown. revealing the
+  code/token again only mints a token when none exists, so it does not silently
+  invalidate working clients.
 
 ## R5 clients
 

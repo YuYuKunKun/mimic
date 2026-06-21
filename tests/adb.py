@@ -164,3 +164,15 @@ def http_text(path):
             return r.status, r.read().decode()
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()
+
+
+def http_raw(path, token, body):
+    """POST and return (status, content_type, raw bytes) -- for binary responses."""
+    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), method="POST")
+    req.add_header("x-a11y-token", token)
+    req.add_header("content-type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.headers.get("content-type", ""), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), e.read()

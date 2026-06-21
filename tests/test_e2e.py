@@ -64,6 +64,14 @@ def test_http_tap_and_global(token):
     assert s == 200 and b["ok"] and b["data"]["performed"] is True
 
 
+def test_http_screenshot_returns_png(token):
+    s, ct, data = adb.http_raw("/v1/screenshot", token, {"format": "png", "scale": "0.5"})
+    assert s == 200, ct
+    assert ct.startswith("image/png")
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"  # png magic bytes
+    assert len(data) > 1000
+
+
 def test_http_launch_app(token):
     adb.shell("am", "start", "-n", adb.ACTIVITY)  # foreground first (bal grace)
     time.sleep(1.0)
@@ -86,7 +94,16 @@ def test_mcp_initialize(token):
 def test_mcp_tools_list(token):
     s, b = adb.mcp(token, "tools/list")
     names = [t["name"] for t in b["result"]["tools"]]
-    assert {"a11y_dump", "a11y_find", "a11y_tap", "a11y_status"} <= set(names)
+    assert {"a11y_dump", "a11y_find", "a11y_tap", "a11y_status", "a11y_screenshot"} <= set(names)
+
+
+def test_mcp_screenshot_image_block(token):
+    import base64
+    time.sleep(1.2)  # screenshot is rate-limited to ~1/sec
+    s, b = adb.mcp(token, "tools/call", {"name": "a11y_screenshot", "arguments": {"scale": "0.5"}})
+    block = b["result"]["content"][0]
+    assert block["type"] == "image" and block["mimeType"] == "image/png"
+    assert base64.b64decode(block["data"])[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_mcp_tools_call_status(token):
