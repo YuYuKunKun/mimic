@@ -81,6 +81,7 @@
                 <action android:name="com.khimaros.mimic.action.CLICK" />
                 <action android:name="com.khimaros.mimic.action.SET_TEXT" />
                 <action android:name="com.khimaros.mimic.action.GLOBAL" />
+                <action android:name="com.khimaros.mimic.action.SCROLL" />
                 <action android:name="com.khimaros.mimic.action.WAIT" />
                 <action android:name="com.khimaros.mimic.action.LAUNCH" />
                 <action android:name="com.khimaros.mimic.action.SCREENSHOT" />

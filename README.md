@@ -1,8 +1,8 @@
 # mimic
 
 an android accessibility service that exposes **view** (read the on-screen
-accessibility tree) and **interact** (tap, swipe, click, type, navigate) to local
-automation over three independent, token-gated surfaces:
+accessibility tree) and **interact** (tap, swipe, click, type, scroll, navigate)
+to local automation over three independent, token-gated surfaces:
 
 - **intents** -- broadcast intents driven by `am` / `termux-am` / `adb`.
 - **http** -- a rest api on `127.0.0.1` for `curl` and the `mimic` cli.
@@ -17,7 +17,8 @@ automation over three independent, token-gated surfaces:
   by-text/id/class/desc, regex) so an agent sends and receives the minimum
   context.
 - tap / long-press / swipe by coordinate; click or set-text on a node found by
-  text or resource-id; back / home / recents / notifications.
+  text or resource-id; scroll until a node appears; back / home / recents /
+  notifications.
 - launch an app or activity by package, component, or action/uri.
 - capture a screenshot (a last resort; the text tree is preferred and far cheaper).
 - a `mimic` shell cli that works from termux/proot/host, and a `SKILL.md`.
@@ -46,8 +47,11 @@ the app opens to a small dark onboarding screen:
 1. install the apk (`make install`).
 2. open **mimic** and enable the accessibility service when it
    deep-links you to settings.
-3. turn on the surfaces you want (**intents**, **local http**, **mcp**).
-   optionally enable **restart surfaces on boot**.
+3. turn on the surfaces you want on the **surfaces** tab (**intents**, **local
+   http**, **mcp**) and choose the bind interface. optionally enable **restart
+   surfaces on boot**. while the http/mcp server runs a notification stays up (tap
+   it to reopen the app). the **general** tab has a global **enable mimic** kill
+   switch at the bottom that disables every surface at once (and restores them).
 
 then connect a client. each client gets its own token, listed in the app and
 revocable on its own:
@@ -80,6 +84,7 @@ mimic click --id com.app:id/submit # click a node by resource-id
 mimic text "hello" --id com.app:id/search
 mimic text "hello"                 # no target -> the focused field
 mimic back                         # global navigation
+mimic scroll down "battery"        # scroll until a "battery" node appears
 mimic wait Login --by text         # block until a "Login" node appears (default 10s)
 mimic packages settings --fuzzy    # launchable apps matching "settings" (typo-tolerant)
 mimic launch com.android.settings --wait  # launch and wait until it is foreground
@@ -120,14 +125,14 @@ on-device (or via `adb forward`). choosing a lan address or all interfaces in th
 app exposes it to your network -- still token-gated, but a larger attack surface;
 the app flags the choice.
 
-for tighter control, turn on **require approval for actions**. each client (token)
-is then authorized per action class (read, interact, type, launch, screenshot,
-packages) and target app: the first time a client tries something new, a prompt
-appears over the foreground app ("`<client>` wants to tap in `<app>`") with allow,
-deny, and a remember scope (once / this app / all apps). the request waits for your
-answer. paired clients default to asking; legacy tokens default to allow-all (for
-headless mcp clients that cannot answer a prompt). each client's grants and mode
-are listed in the app and revocable individually. the prompt uses an accessibility
+for tighter control, turn on **enable fine-grained permissions**. each client
+(token) is then authorized per action class (read, interact, type, launch,
+screenshot, packages) and target app: the first time a client tries something new, a
+prompt appears over the foreground app ("`<client>` wants to tap in `<app>`") with
+allow, deny, and a remember scope (once / this app / all apps). the request waits
+for your answer. every client defaults to asking; set a headless client that cannot
+answer a prompt to allow-all from its row in the app. each client's grants and mode
+are listed there and revocable individually. the prompt uses an accessibility
 overlay; granting the optional "draw over other apps" permission makes it more
 robust.
 

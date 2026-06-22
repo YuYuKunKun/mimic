@@ -208,6 +208,113 @@ def test_cli_wait(token):
     assert isinstance(data, list) and len(data) >= 1
 
 
+# ---- scroll (until found) ----
+
+def _scroll_to_top(token):
+    # a never-matching scroll-up runs to the top and stops (end of content), a
+    # deterministic anchor regardless of where the list was left.
+    adb.http("POST", "/v1/scroll", token,
+             {"direction": "up", "query": "zz_nomatch_top", "steps": 30, "timeout": 20}, timeout=45)
+    time.sleep(0.4)
+
+
+def _visible_names(token):
+    # on-screen app names (drop size subtitles and the sticky "All apps" header).
+    s, b = adb.http("POST", "/v1/dump", token, {"format": "flat", "fields": "text", "filter": "visible"})
+    if not (s == 200 and b["ok"]):
+        return []
+    return [e["text"] for e in b["data"]
+            if e.get("text") and len(e["text"]) >= 4 and any(c.isalpha() for c in e["text"])
+            and "All apps" not in e["text"]]
+
+
+def test_http_scroll_once_performs(token):
+    # a directional scroll with no query just performs a single swipe.
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/scroll", token, {"direction": "down"})
+    assert s == 200 and b["ok"] and b["data"]["performed"] is True, b
+
+
+def test_http_scroll_until_found_visible(token):
+    # a target already on screen is returned immediately (zero scrolls needed).
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/scroll", token,
+                    {"direction": "down", "query": "general", "by": "text", "timeout": 5}, timeout=10)
+    assert s == 200 and b["ok"] and isinstance(b["data"], list) and len(b["data"]) >= 1, b
+
+
+def test_http_scroll_until_not_found(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/scroll", token,
+                    {"direction": "down", "query": "zzznope999", "by": "text", "timeout": 3, "steps": 3}, timeout=15)
+    assert s == 200 and b["ok"] is False and "not found" in (b.get("error") or "").lower(), b
+
+
+def test_http_scroll_traverses_recycler(token):
+    # the real traversal: a recycling list (all-apps) holds only on-screen rows in
+    # the tree, so an off-screen app cannot match until scrolled into view. search
+    # for "Settings" -- present on every device and sorted near the end -- so on a
+    # populated list this scrolls through many screens, and on a short one it is
+    # simply found. either way the returned match must be on-screen.
+    adb.shell("am", "start", "-a", "android.settings.MANAGE_APPLICATIONS_SETTINGS")
+    time.sleep(2.5)
+    if "settings" not in adb.top_activity().lower():
+        pytest.skip("all-apps settings screen unavailable")
+    _scroll_to_top(token)
+    s, b = adb.http("POST", "/v1/scroll", token,
+                    {"direction": "down", "query": "Settings", "by": "text", "match": "exact",
+                     "timeout": 30, "steps": 30}, timeout=60)
+    adb.http("POST", "/v1/global", token, {"nav": "home"})  # cleanup
+    assert s == 200 and b["ok"] and isinstance(b["data"], list) and b["data"], b
+    # the returned match is on-screen (filter=visible), so its text equals "Settings".
+    assert any(e.get("text") == "Settings" for e in b["data"]), b["data"]
+
+
+def test_http_scroll_skip_visible(token):
+    # default scroll-into-view returns a match already on screen without moving;
+    # skip_visible ignores it and scrolls past to look further in the direction.
+    adb.shell("am", "start", "-a", "android.settings.MANAGE_APPLICATIONS_SETTINGS")
+    time.sleep(2.5)
+    if "settings" not in adb.top_activity().lower():
+        pytest.skip("all-apps settings screen unavailable")
+    _scroll_to_top(token)
+    names = _visible_names(token)
+    if not names:
+        pytest.skip("no on-screen app label to target")
+    target = names[0]
+    # default: returns the visible match and leaves it on screen (no scrolling).
+    s, b = adb.http("POST", "/v1/scroll", token,
+                    {"direction": "down", "query": target, "by": "text", "match": "exact", "timeout": 10}, timeout=30)
+    assert s == 200 and b["ok"] and any(e.get("text") == target for e in b["data"]), b
+    assert target in _visible_names(token), "scroll-into-view should not have moved off the visible match"
+    # skip_visible: ignores the on-screen match and scrolls past it.
+    _scroll_to_top(token)
+    adb.http("POST", "/v1/scroll", token,
+             {"direction": "down", "query": target, "by": "text", "match": "exact",
+              "skip_visible": True, "timeout": 12, "steps": 12}, timeout=40)
+    moved_off = target not in _visible_names(token)
+    adb.http("POST", "/v1/global", token, {"nav": "home"})  # cleanup
+    assert moved_off, "skip_visible should have scrolled past the visible match"
+
+
+def test_cli_scroll(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    rc, out = adb.cli(["scroll", "down"], token)
+    assert rc == 0, out
+    assert json.loads(out)["data"]["performed"] is True
+
+
+def test_mcp_scroll(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    r = _mcp_call(token, "mimic_scroll", {"direction": "down", "query": "general", "by": "text", "timeout": 5})
+    assert r["isError"] is False and isinstance(r["content"][0]["text"], str)
+
+
 # ---- pairing and per-client tokens ----
 
 def _wrong_code(code):
@@ -403,3 +510,42 @@ def test_auth_off_allows_no_token(token):
         adb.set_auth(True)
     s, b = adb.http("POST", "/v1/packages", "")  # auth back on -> rejected
     assert s == 401
+
+
+# ---- general-tab global kill switch ----
+# runs last: it disables then restores every surface, so its state changes do not
+# disturb the other tests.
+
+def _http_unreachable(token):
+    try:
+        adb.http("POST", "/v1/status", token, timeout=3)
+        return False
+    except Exception:
+        return True
+
+
+def test_global_kill_switch(token):
+    # the general-tab "enable mimic" kill switch disables every surface -- the
+    # intents receiver and the http/mcp server (whose notification then clears) --
+    # and restores them when turned back on.
+    adb.select_tab("surfaces")
+    adb.ensure_switch("intents", True)
+    adb.ensure_switch("local http", True)
+    adb.ensure_switch("mcp server", True)
+    time.sleep(1.0)
+    assert adb.broadcast("STATUS") is not None, "intents should be alive before the kill"
+    s, b = adb.http("POST", "/v1/status", token)
+    assert s == 200 and b["ok"] and b["data"]["http"] and b["data"]["mcp"] and b["data"]["intents"], b
+    assert adb.host_notifications() > 0, "host notification absent while serving"
+    # kill everything.
+    adb.set_master(False)
+    time.sleep(1.5)
+    assert adb.broadcast("STATUS") is None, "intents receiver should be disabled after the kill"
+    assert adb.host_notifications() == 0, "host notification should clear after the kill"
+    assert _http_unreachable(token), "http server should be down after the kill"
+    # restore: the snapshot brings the surfaces back.
+    adb.set_master(True)
+    time.sleep(1.5)
+    assert adb.broadcast("STATUS") is not None, "intents should be restored"
+    s, b = adb.http("POST", "/v1/status", token)
+    assert s == 200 and b["ok"] and b["data"]["http"] and b["data"]["mcp"], b

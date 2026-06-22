@@ -216,6 +216,18 @@ def set_auth(value):
     ensure_switch("require authentication", value)
 
 
+def set_master(value):
+    """toggle the global 'enable mimic' kill switch (general tab); off disables
+    every surface."""
+    select_tab("general")
+    ensure_switch("enable mimic", value)
+
+
+def host_notifications():
+    """count active mimic host-service notifications (0 when the server is off)."""
+    return shell("dumpsys", "notification", "--noredact").count("pkg=" + PKG)
+
+
 def revoke_in_ui(token_id):
     """tap the revoke button for a given client id (gui-only token management).
     the clients list updates live when a client pairs over http, so just open the

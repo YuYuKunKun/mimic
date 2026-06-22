@@ -103,6 +103,7 @@ object Mcp {
         "mimic_click" to Cmd.CLICK,
         "mimic_set_text" to Cmd.SET_TEXT,
         "mimic_global" to Cmd.GLOBAL,
+        "mimic_scroll" to Cmd.SCROLL,
         "mimic_wait" to Cmd.WAIT,
         "mimic_packages" to Cmd.PACKAGES,
         "mimic_launch" to Cmd.LAUNCH,
@@ -159,6 +160,14 @@ object Mcp {
             schema(listOf("text"), mapOf("text" to prop("string", "text to enter"), "by" to BY, "query" to prop("string", "value to match (omit to target the focused field)"), "match" to MATCH))),
         tool("mimic_global", "perform a global navigation action",
             schema(listOf("nav"), mapOf("nav" to prop("string", "back | home | recents | notifications", listOf("back", "home", "recents", "notifications"))))),
+        tool("mimic_scroll", "scroll the active window in a direction; with a query, keep scrolling until a node matching it is visible on screen (returns the visible matches), stopping at the end of the content or the timeout",
+            schema(listOf("direction"), mapOf(
+                "direction" to prop("string", "the content-reveal direction: up | down | left | right", listOf("up", "down", "left", "right")),
+                "query" to prop("string", "scroll until an on-screen node matches this text/id/class/desc; omit to scroll once"),
+                "by" to BY, "match" to MATCH, "filter" to FILTER, "package" to PACKAGE,
+                "steps" to prop("integer", "max scrolls with a query, or exact scrolls without one (default 1)"),
+                "skip_visible" to prop("boolean", "ignore matches already on screen; keep scrolling to the next occurrence in this direction"),
+                "timeout" to prop("number", "seconds to keep scrolling for a match (default 10)")))),
         tool("mimic_wait", "wait until a node matching the query appears in the active window (polls); returns the matches, or fails on timeout",
             schema(listOf("query"), mapOf(
                 "query" to prop("string", "the text/id/class/desc to wait for"),

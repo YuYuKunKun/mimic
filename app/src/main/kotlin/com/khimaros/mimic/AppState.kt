@@ -22,6 +22,7 @@ object AppState {
     private const val KEY_BIND = "bind_address"
     private const val KEY_APPROVAL = "require_approval"
     private const val KEY_AUTH = "require_auth"
+    private const val KEY_KILL = "kill_restore"   // surfaces to restore after a kill
 
     fun intents(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_INTENTS, false)
     fun http(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_HTTP, false)
@@ -77,6 +78,34 @@ object AppState {
     fun setMcp(ctx: Context, value: Boolean) {
         prefs(ctx).edit().putBoolean(KEY_MCP, value).apply()
         applyHost(ctx)
+    }
+
+    // the general tab's global kill switch reflects whether mimic is active at all
+    // (any surface on) and, when turned off, disables every surface.
+    fun anySurface(ctx: Context): Boolean = intents(ctx) || http(ctx) || mcp(ctx)
+
+    // global on/off for all three surfaces. off: remember which were on, then
+    // disable everything -- the intents receiver and the http/mcp server (whose
+    // notification then clears). on: restore the remembered set, or the localhost
+    // server (http + mcp) if nothing was on.
+    fun setAllSurfaces(ctx: Context, value: Boolean) {
+        if (value) {
+            val snap = prefs(ctx).getString(KEY_KILL, "") ?: ""
+            val none = snap.isEmpty()
+            setIntents(ctx, "i" in snap)
+            setHttp(ctx, "h" in snap || none)
+            setMcp(ctx, "m" in snap || none)
+        } else {
+            val snap = buildString {
+                if (intents(ctx)) append("i")
+                if (http(ctx)) append("h")
+                if (mcp(ctx)) append("m")
+            }
+            prefs(ctx).edit().putString(KEY_KILL, snap).apply()
+            setIntents(ctx, false)
+            setHttp(ctx, false)
+            setMcp(ctx, false)
+        }
     }
 
     // start or stop the foreground HostService to match the http/mcp prefs.

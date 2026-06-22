@@ -26,10 +26,11 @@ import android.widget.TextView
 import android.widget.Toast
 
 // a dark, minimal onboarding screen split into bottom tabs: general (accessibility
-// + draw-over status, require-approval, boot), clients (pairing + per-client list
-// with each client's grants), and surfaces (intents/http/mcp + bind). plain
-// framework widgets, no androidx; no state of its own beyond AppState/TokenStore/
-// Permissions.
+// + draw-over status, require-approval, boot, and a global "enable mimic" kill
+// switch at the bottom), clients (pairing + per-client list with each client's
+// grants), and surfaces (intents/http/mcp + bind). the kill switch and the three
+// surface toggles share state and stay in sync. plain framework widgets, no
+// androidx; no state of its own beyond AppState/TokenStore/Permissions.
 class MainActivity : Activity() {
 
     private lateinit var serviceStatus: TextView
@@ -40,6 +41,15 @@ class MainActivity : Activity() {
     private lateinit var overlayState: TextView
     private lateinit var pages: List<View>
     private lateinit var tabs: List<Button>
+
+    // the three surfaces share state with a global "enable mimic" kill switch on
+    // the general tab; these stay in sync. `syncing` suppresses the listener
+    // feedback while reflecting one switch in the others.
+    private lateinit var swMaster: Switch
+    private lateinit var swIntents: Switch
+    private lateinit var swHttp: Switch
+    private lateinit var swMcp: Switch
+    private var syncing = false
 
     // the bind options and the currently selected interface.
     private var bindOptions: List<String> = emptyList()
@@ -89,19 +99,17 @@ class MainActivity : Activity() {
             refresh()
         }
 
-        bindSurface(R.id.sw_intents, getString(R.string.sw_intents), AppState.intents(this)) {
-            AppState.setIntents(this, it)
-        }
-        // the http/mcp labels carry the full url and are filled by updateAddress
-        // (they depend on the chosen bind interface).
-        bindSurface(R.id.sw_http, "", AppState.http(this)) {
-            if (it) ensureNotificationPermission()
-            AppState.setHttp(this, it)
-        }
-        bindSurface(R.id.sw_mcp, "", AppState.mcp(this)) {
-            if (it) ensureNotificationPermission()
-            AppState.setMcp(this, it)
-        }
+        // the global "enable mimic" kill switch (general tab) and the three per-
+        // surface toggles (surfaces tab; the http/mcp labels carry the full url via
+        // updateAddress) drive the same prefs, so each reflects the others.
+        swMaster = findViewById(R.id.sw_master)
+        swIntents = findViewById(R.id.sw_intents)
+        swHttp = findViewById(R.id.sw_http)
+        swMcp = findViewById(R.id.sw_mcp)
+        wireSurface(swIntents, AppState.intents(this), false) { AppState.setIntents(this, it); syncMaster() }
+        wireSurface(swHttp, AppState.http(this), true) { AppState.setHttp(this, it); syncMaster() }
+        wireSurface(swMcp, AppState.mcp(this), true) { AppState.setMcp(this, it); syncMaster() }
+        wireSurface(swMaster, AppState.anySurface(this), true) { AppState.setAllSurfaces(this, it); syncSurfaceSwitches() }
         findViewById<Switch>(R.id.sw_auth).apply {
             isChecked = AppState.requireAuth(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> AppState.setRequireAuth(this@MainActivity, checked) }
@@ -317,12 +325,32 @@ class MainActivity : Activity() {
         setTextColor(getColor(R.color.muted))
     }
 
-    private fun bindSurface(id: Int, label: String, initial: Boolean, set: (Boolean) -> Unit) {
-        findViewById<Switch>(id).apply {
-            text = label
-            isChecked = initial
-            setOnCheckedChangeListener { _, checked -> set(checked) }
+    // wire a surface switch (master/intents/http/mcp). a programmatic (sync) change
+    // is ignored so reflecting one switch in another does not re-run the action; a
+    // user enable of a server surface first requests the notification permission.
+    private fun wireSurface(sw: Switch, initial: Boolean, notify: Boolean, action: (Boolean) -> Unit) {
+        sw.isChecked = initial
+        sw.setOnCheckedChangeListener { _, checked ->
+            if (syncing) return@setOnCheckedChangeListener
+            if (checked && notify) ensureNotificationPermission()
+            action(checked)
         }
+    }
+
+    // reflect a per-surface change in the global kill switch (on if any surface is).
+    private fun syncMaster() {
+        syncing = true
+        swMaster.isChecked = AppState.anySurface(this)
+        syncing = false
+    }
+
+    // reflect the kill switch (which set all three surfaces) in the per-surface ones.
+    private fun syncSurfaceSwitches() {
+        syncing = true
+        swIntents.isChecked = AppState.intents(this)
+        swHttp.isChecked = AppState.http(this)
+        swMcp.isChecked = AppState.mcp(this)
+        syncing = false
     }
 
     private fun ensureNotificationPermission() {

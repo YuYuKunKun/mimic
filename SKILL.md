@@ -1,12 +1,12 @@
 ---
 name: mimic
-description: Drive an android device from a shell with the `mimic` cli -- read the on-screen accessibility tree (filtered/queried on-device to stay small) and tap, swipe, click, type, and navigate. Use for ui automation on a connected/termux android device. Covers setup, every subcommand, and how to keep agent context small.
+description: Drive an android device from a shell with the `mimic` cli -- read the on-screen accessibility tree (filtered/queried on-device to stay small) and tap, swipe, click, type, scroll, and navigate. Use for ui automation on a connected/termux android device. Covers setup, every subcommand, and how to keep agent context small.
 ---
 
 # mimic cli
 
 `mimic` is a shell command that reads and acts on an android device's
-accessibility tree: dump/query the ui, then tap, swipe, click, type, and
+accessibility tree: dump/query the ui, then tap, swipe, click, type, scroll, and
 navigate. it talks to the **mimic** app over whatever transport is
 available and auto-selects one, so you just run `mimic <command>`.
 
@@ -100,6 +100,17 @@ interact (stateless -- targets re-resolve every call):
   mimic click      X Y | --id ID | --text T | --class C | --desc D [--match M]
   mimic text       VALUE [--id ID | --text T | --class C | --desc D] [--match M]
                    (no target -> types into the currently focused field)
+  mimic scroll     up|down|left|right [QUERY] [--match M] [--timeout S] [--steps N]
+                            [--skip-visible]
+                   with QUERY: scroll until a node matching it is on screen, then
+                   return the match (already-visible -> returns at once; this is
+                   scroll-into-view). it matches only visible nodes -- scrolling
+                   past off-screen tree rows -- and stops at the end of the content
+                   or the timeout. --skip-visible ignores matches already shown and
+                   finds the next occurrence in the scroll direction (e.g. an
+                   earlier chat message). without a QUERY: one scroll (or --steps
+                   N). direction is the content reveal: down reveals lower content,
+                   right reveals further right.
   mimic back | home | recents | notifications
 
 discover and launch apps:
@@ -149,8 +160,8 @@ mimic text "alice" --id com.example.app:id/username
 mimic text "secret" --id com.example.app:id/password
 mimic click --text "log in" --match contains
 
-# scroll and re-survey
-mimic swipe 540 1600 540 600
+# scroll to a control, then re-survey
+mimic scroll down "battery"               # keep scrolling until "battery" appears
 mimic find EditText --by class            # the editable fields now on screen
 
 # find by regex, then tap its coordinates from the compact line
@@ -186,8 +197,8 @@ app's **http** surface and the cli will use it.
 - `accessibility service not enabled`: enable it in accessibility settings.
 - `no node matched query`: widen the query or `--match contains`; confirm with
   `mimic find`.
-- `permission_required`: the device has "require approval" on and a prompt is
-  waiting on screen. the command blocks until the user answers; if it times out
+- `permission_required`: the device has "fine-grained permissions" on and a prompt
+  is waiting on screen. the command blocks until the user answers; if it times out
   first you get this -- the user approves the prompt (optionally "remember"), then
   run the command again. `permission_denied` means the user (or a saved rule)
   rejected it; do not retry blindly.
@@ -220,9 +231,9 @@ if the client runs on a different host than the phone, forward the port with
 `adb forward tcp:8473 tcp:8473`, or set the bind interface to a lan address /
 0.0.0.0 in the app and use the device ip (the app shows and copies the address).
 the tools are `mimic_dump`, `mimic_find`, `mimic_wait`, `mimic_tap`,
-`mimic_long_press`, `mimic_swipe`, `mimic_click`, `mimic_set_text`, `mimic_global`,
-`mimic_packages`, `mimic_launch`, `mimic_status`; their arguments mirror the cli
-flags. action tools answer with a plain success message and an `isError` flag, not
-a raw json blob.
+`mimic_long_press`, `mimic_swipe`, `mimic_scroll`, `mimic_click`, `mimic_set_text`,
+`mimic_global`, `mimic_packages`, `mimic_launch`, `mimic_status`; their arguments
+mirror the cli flags. action tools answer with a plain success message and an
+`isError` flag, not a raw json blob.
 
 the rest api and raw intent protocol are documented in [DESIGN.md](DESIGN.md).

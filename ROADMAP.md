@@ -105,20 +105,55 @@
       grant-revoke ui are verified by hand: the service overlay is not visible to
       uiautomator, so it cannot be driven in e2e.
 
-## milestone 7: tabbed ui, wait, launch --wait
+## milestone 7: tabbed ui, wait, launch --wait (done)
 
-- [ ] split the onboarding screen into bottom tabs (general: accessibility +
+- [x] split the onboarding screen into bottom tabs (general: accessibility +
       draw-over status + require-approval + boot; clients: pairing + per-client
       list with grants; surfaces: intents/http/mcp + bind) -- plain framework
       widgets, no androidx/material
-- [ ] `wait QUERY` polls the active window until a node matches, with a
+- [x] `wait QUERY` polls the active window until a node matches, with a
       configurable timeout (default 10s) and a clear timeout failure; over cli,
       mcp, and intents (capped under the broadcast window)
-- [ ] `launch --wait` blocks until the launched app owns the active window,
+- [x] `launch --wait` blocks until the launched app owns the active window,
       reporting `foreground`
-- [ ] docs updated (requirements R1.6/R2.6, readme, skill) + python e2e (wait
+- [x] docs updated (requirements R1.6/R2.6, readme, skill) + python e2e (wait
       found/timeout, launch --wait foreground, cli + mcp wait); harness is
       tab-aware
+
+## milestone 8: scroll until found (done; verified on emulator)
+
+- [x] `scroll DIRECTION` drags across the middle of the screen (avoiding edge
+      gestures); direction names the content reveal (up/down/left/right)
+- [x] the drag stays under one viewport and ends with a brief hold so it does not
+      fling -- it moves a fixed distance, consecutive screens overlap, and no row
+      is skipped between steps (a fling was skipping rows; caught on-device)
+- [x] with a query, keep scrolling until a matching node is visible on screen,
+      returning the matches (like find/wait); match forces filter=visible so it
+      does not stop on an off-screen tree row; stop at the timeout, a scroll cap,
+      or when a step no longer changes the screen (end of content); end-detection
+      polls for the tree to settle so a slow update under load is not read as the end
+- [x] a match already on screen returns at once (scroll-into-view); `--skip-visible`
+      ignores already-shown matches and finds the next occurrence in the direction
+- [x] without a query, perform `--steps` scrolls (default 1) and report performed
+- [x] exposed on every surface (cli `scroll`, mcp `mimic_scroll`, intents capped
+      under the broadcast window); authorized as the `interact` class
+- [x] docs updated (requirements R2.9, design, readme, skill) + python e2e (scroll
+      once, until-found-visible, not-found bounded, traverses-recycler, skip-visible,
+      cli + mcp)
+- [x] verified: full e2e suite 48/48 green on an android-34 emulator (the dev
+      pixel having been unplugged); scroll robustness confirmed on the pixel too
+
+## milestone 9: global kill switch + notification (done; verified on emulator)
+
+- [x] the foreground host notification opens the app when tapped (content intent)
+- [x] a global "enable mimic" kill switch at the bottom of the general tab disables
+      every surface (intents receiver + http/mcp server) and restores them (off
+      snapshots the on-surfaces; on restores them, or http/mcp by default); kept in
+      sync with the per-surface toggles
+- [x] the notification disappears when the server stops or no surface is enabled
+      (HostService self-stops + removes the notification on a surfaceless start)
+- [x] docs updated (requirements R7.6, design, readme) + python e2e (kill switch
+      disables intents + http + notification, then restores them)
 
 ## backlog
 

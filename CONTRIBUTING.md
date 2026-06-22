@@ -81,6 +81,6 @@ emulator over `adb`. when no device is attached they skip rather than fail.
   [README.md](README.md) / [SKILL.md](SKILL.md) after user-visible changes.
 - never regress a requirement in [REQUIREMENTS.md](REQUIREMENTS.md).
 - magical constants live as named values at the top of the file that uses them,
-  or in a shared constants file (`Actions.kt`, `Extras.kt`).
+  or in the shared protocol file (`Protocol.kt`: `Cmd`/`Actions`/`Extras`/`Defaults`).
 - keep dependencies minimal. ascii only. lowercase docs and output.
 - version control is the maintainer's job; do not commit, tag, or push.

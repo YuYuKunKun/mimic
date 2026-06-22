@@ -22,12 +22,18 @@ exposed over three independent **surfaces**, each separately toggleable:
   `/cli/mimic`, `/SKILL.md` from bundled assets (bootstrap/update), and `POST
   /pair` (redeem a one-time code for a token). bundled assets are copied from the
   repo root at build time (gradle `syncBootstrap`) so they always match the source.
+  it posts an ongoing notification while serving (tapping it opens the app), and
+  self-stops -- dropping the notification -- whenever no surface (http or mcp) is
+  enabled, so a stale "serving" notice never lingers.
 - **MainActivity** -- a dark onboarding ui in three bottom tabs. general:
   accessibility + draw-over status (each with a "grant" button), require-approval,
-  launch-on-boot. clients: start pairing or reveal a legacy token (both auto-copied
-  to the clipboard), and a live list of clients -- each with its mode, its grants,
-  and revoke. surfaces: the three surface toggles, the bind interface, and the
-  copyable address. it observes `TokenStore` so the client list updates when a
+  launch-on-boot, and a global "enable mimic" kill switch at the bottom. clients:
+  start pairing or reveal a legacy token (both auto-copied to the clipboard), and a
+  live list of clients -- each with its mode, its grants, and revoke. surfaces: the
+  three surface toggles, the bind interface, and the copyable address. the kill
+  switch and the three surface toggles drive the same prefs and stay in sync (off
+  disables every surface and snapshots them; on restores the set, or the http/mcp
+  server by default). it observes `TokenStore` so the client list updates when a
   client pairs over http without a reopen.
 - **BootReceiver** -- restarts the host surfaces after a reboot when launch-on-
   boot is set; it performs no accessibility action, so it stays enabled.
@@ -69,14 +75,17 @@ http/mcp surfaces are reachable from proot, native termux, and the host (via
 ## command core and protocol
 
 commands have surface-agnostic short names (`Cmd`): `DUMP`, `FIND`, `TAP`,
-`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `PACKAGES`, `LAUNCH`,
-`SCREENSHOT`, `STATUS` (plus the `PAIR` handshake). arguments are uniform string
-keys (`Extras`): view -> `format` (tree|flat|compact), `filter`
+`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `SCROLL`, `WAIT`, `PACKAGES`,
+`LAUNCH`, `SCREENSHOT`, `STATUS` (plus the `PAIR` handshake). arguments are uniform
+string keys (`Extras`): view -> `format` (tree|flat|compact), `filter`
 (interactive|text|visible|all), `max_depth`, `package`, `fields`, and for query
 `by` (text|id|class|desc), `query`, `match` (exact|contains|regex); interact ->
-`x`,`y`,`x2`,`y2`,`duration`,`nav`,`text`; launch -> `package`,`component`,
-`action`,`uri`; packages -> `query`; screenshot -> `format` (png|jpeg),
-`quality`, `scale`. `SET_TEXT` with no `by`/`query` targets the input-focused node.
+`x`,`y`,`x2`,`y2`,`duration`,`nav`,`text`; scroll -> `direction`
+(up|down|left|right), plus a query (scroll until found), `steps`/`timeout`, and
+`skip_visible`;
+launch -> `package`,`component`,`action`,`uri`; packages -> `query`; screenshot ->
+`format` (png|jpeg), `quality`, `scale`. `SET_TEXT` with no `by`/`query` targets the
+input-focused node.
 
 `PACKAGES`, `LAUNCH`, and `STATUS` do not need the accessibility service; the rest
 do. launching uses the service (or app) context to `startActivity` and is subject
@@ -123,6 +132,21 @@ payload is small -- the primary lever for keeping agent context small:
 
 interaction is **stateless**: `CLICK by=id` re-resolves the node at call time, so a
 tree read earlier cannot cause a click on a stale coordinate.
+
+`SCROLL` drags across the middle half of the screen (clear of the edge gestures);
+`direction` names the content reveal (down reveals lower content, the finger moving
+up). the drag is slow and ends with a brief hold so the finger lifts at ~zero
+velocity: the list does not fling, so it moves a fixed distance under one viewport
+and consecutive screens overlap -- no row is skipped between steps. with a query it
+polls find-then-scroll until a matching node is **visible on screen** -- the
+accessibility tree can include off-screen rows (a settings list exposes all of
+them), so the match forces `filter=visible`, otherwise scroll would stop on a node
+still below the fold. it stops at the timeout, a scroll cap (`SCROLL_MAX_STEPS`), or
+when a step no longer changes a text-only fingerprint of the screen (the end of the
+content), and returns the visible matches like `FIND`/`WAIT`. an already-visible
+match satisfies it at once (scroll-into-view); `skip_visible` instead ignores the
+matches already shown and stops on the next occurrence in the scroll direction.
+without a query it performs `steps` drags and reports `performed`.
 
 ## mcp
 
@@ -180,8 +204,9 @@ one call returns the real result; intents is capped under the broadcast window).
 the overlay is a `TYPE_ACCESSIBILITY_OVERLAY` (no extra permission); when the
 optional `SYSTEM_ALERT_WINDOW` is granted it upgrades to `TYPE_APPLICATION_OVERLAY`.
 remembering "this app"/"all apps" writes a rule; on timeout the request returns
-`permission_required` so the client retries after approval. headless clients use a
-legacy token (default `allow_all`) so they never block on a prompt.
+`permission_required` so the client retries after approval. every token defaults to
+`ask`; a headless client that cannot answer a prompt is set to `allow_all` from its
+row in the ui so it never blocks.
 
 ## clients
 

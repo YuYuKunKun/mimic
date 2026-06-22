@@ -3,6 +3,7 @@ package com.khimaros.mimic
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -40,6 +41,13 @@ class HostService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // with no surface to serve (toggled off, or a START_STICKY restart after the
+        // prefs changed), shut down and drop the notification rather than linger.
+        if (!AppState.http(this) && !AppState.mcp(this)) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val desired = AppState.bindAddress(this)
         if (server == null || boundAddress != desired) startServer(desired)
         startForegroundNotice()
@@ -268,10 +276,18 @@ class HostService : Service() {
             if (AppState.mcp(this@HostService)) add("mcp")
         }.joinToString("+").ifEmpty { "idle" }
         val host = Net.displayHost(boundAddress ?: AppState.bindAddress(this))
+        // tapping the notification opens the app (to toggle surfaces, pair, etc).
+        val openApp = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification: Notification = Notification.Builder(this, channelId)
             .setContentTitle("mimic")
             .setContentText("serving $surfaces on $host:${Host.PORT}")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setContentIntent(openApp)
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

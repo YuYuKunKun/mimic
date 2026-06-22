@@ -124,6 +124,7 @@ object Commands {
         Cmd.CLICK -> click(service, get)
         Cmd.SET_TEXT -> setText(service, get)
         Cmd.GLOBAL -> performed(service.globalNav(get(Extras.NAV) ?: ""))
+        Cmd.SCROLL -> scrollFor(service, get)
         Cmd.WAIT -> waitFor(service, get)
         Cmd.SCREENSHOT -> screenshot(service, get)
         else -> fail("unknown command: $action")
@@ -167,6 +168,86 @@ object Commands {
     private fun waitTimeoutMs(get: (String) -> String?): Long =
         ((get(Extras.TIMEOUT)?.toDoubleOrNull() ?: Defaults.WAIT_TIMEOUT_S) * 1000).toLong()
             .coerceIn(0L, Defaults.WAIT_MAX_MS)
+
+    private val SCROLL_DIRS = setOf("up", "down", "left", "right")
+
+    // a text-only compact render of the screen, used as a cheap fingerprint to
+    // detect that a scroll no longer moves content (the end has been reached).
+    private val SIGNATURE_CFG = ViewConfig(
+        format = "compact", filter = "text", maxDepth = Defaults.MAX_DEPTH, pkg = null,
+        fields = NODE_FIELDS.toSet(), by = null, query = null, match = Defaults.MATCH,
+    )
+
+    // scroll the active window in a direction. with a query, keep scrolling until a
+    // node matches (returning the matches like find/wait), stopping at the timeout,
+    // a scroll cap, or when a scroll no longer changes the screen (end of content).
+    // without a query, perform `steps` scrolls (default 1) and report performed.
+    private fun scrollFor(service: MimicService, get: (String) -> String?): Result {
+        val dir = (get(Extras.DIRECTION) ?: "").trim().lowercase()
+        if (dir !in SCROLL_DIRS) return fail("scroll needs a direction: up | down | left | right")
+        val query = get(Extras.QUERY)
+        if (query.isNullOrEmpty()) return scrollSteps(service, dir, get)
+
+        // the stop condition is an *on-screen* match. the accessibility tree can
+        // include off-screen rows (e.g. a settings list), so match only visible
+        // nodes -- otherwise scroll would "find" a node still below the fold that
+        // the user can neither see nor tap. visibility overrides the filter.
+        var cfg = ViewConfig.from(get).copy(filter = "visible")
+        if (get(Extras.FORMAT) == null) cfg = cfg.copy(format = "flat")
+        val maxSteps = stepCount(get, Defaults.SCROLL_MAX_STEPS)
+        val deadline = System.currentTimeMillis() + waitTimeoutMs(get)
+        // by default a match already on screen satisfies the scroll (scroll-into-
+        // view). with skip_visible, ignore the starting matches and keep scrolling
+        // until the query reappears in content that was not already shown -- "skip
+        // what is here, find the next one in this direction".
+        val skipVisible = get(Extras.SKIP_VISIBLE).let { it == "true" || it == "1" }
+        var armed = !skipVisible
+        var steps = 0
+        while (true) {
+            val root = service.activeRoot()
+            val match = root != null && NodeTree.firstMatch(root, cfg) != null
+            if (!armed && !match) armed = true  // the starting matches have scrolled away
+            if (armed && match) return ok(NodeTree.render(root, cfg))
+            if (steps >= maxSteps || System.currentTimeMillis() >= deadline)
+                return fail("scroll $dir: \"$query\" not found after $steps scroll(s)")
+            val before = root?.let { signature(it) } ?: ""
+            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS)) return fail("scroll failed (no scrollable view?)")
+            steps++
+            // wait for the tree to reflect the drag; if it never changes within the
+            // window, the content did not move -- the end was reached. polling (vs a
+            // fixed delay) tolerates a tree that updates slowly under load.
+            if (!awaitChange(service, before, Defaults.SCROLL_CHANGE_WINDOW_MS))
+                return fail("scroll $dir: \"$query\" not found; reached the end of the content")
+        }
+    }
+
+    // a text-only compact render of the screen -- a cheap fingerprint of what is on
+    // screen, which shifts as content scrolls and holds steady at the end.
+    private fun signature(root: AccessibilityNodeInfo): String =
+        NodeTree.render(root, SIGNATURE_CFG).toString()
+
+    // poll until the screen differs from `before` (the drag moved content), or the
+    // window elapses with no change (the content did not move -- the end).
+    private fun awaitChange(service: MimicService, before: String, windowMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + windowMs
+        while (true) {
+            Thread.sleep(Defaults.WAIT_POLL_MS)
+            if ((service.activeRoot()?.let { signature(it) } ?: "") != before) return true
+            if (System.currentTimeMillis() >= deadline) return false
+        }
+    }
+
+    private fun scrollSteps(service: MimicService, dir: String, get: (String) -> String?): Result {
+        val steps = stepCount(get, 1)
+        for (i in 0 until steps) {
+            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS)) return fail("scroll failed (no scrollable view?)")
+            if (i < steps - 1) Thread.sleep(Defaults.SCROLL_SETTLE_MS)
+        }
+        return ok(JSONObject().put("performed", true).put("scrolled", steps))
+    }
+
+    private fun stepCount(get: (String) -> String?, default: Int): Int =
+        get(Extras.STEPS)?.toIntOrNull()?.coerceIn(1, Defaults.SCROLL_MAX_STEPS) ?: default
 
     // poll until the given package owns the active window, or the timeout.
     private fun waitForeground(pkg: String, timeoutMs: Long): Boolean {

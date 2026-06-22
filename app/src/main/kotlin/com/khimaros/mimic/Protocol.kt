@@ -16,6 +16,7 @@ object Cmd {
     const val CLICK = "CLICK"
     const val SET_TEXT = "SET_TEXT"
     const val GLOBAL = "GLOBAL"
+    const val SCROLL = "SCROLL"
     const val WAIT = "WAIT"
     const val LAUNCH = "LAUNCH"
     const val SCREENSHOT = "SCREENSHOT"
@@ -38,7 +39,7 @@ object ActionClass {
     private val MAP = mapOf(
         Cmd.DUMP to READ, Cmd.FIND to READ, Cmd.WAIT to READ,
         Cmd.TAP to INTERACT, Cmd.LONG_PRESS to INTERACT, Cmd.SWIPE to INTERACT,
-        Cmd.CLICK to INTERACT, Cmd.GLOBAL to INTERACT,
+        Cmd.CLICK to INTERACT, Cmd.GLOBAL to INTERACT, Cmd.SCROLL to INTERACT,
         Cmd.SET_TEXT to TYPE,
         Cmd.LAUNCH to LAUNCH,
         Cmd.SCREENSHOT to SCREENSHOT,
@@ -71,6 +72,7 @@ object Actions {
     const val CLICK = PREFIX + Cmd.CLICK
     const val SET_TEXT = PREFIX + Cmd.SET_TEXT
     const val GLOBAL = PREFIX + Cmd.GLOBAL
+    const val SCROLL = PREFIX + Cmd.SCROLL
     const val LAUNCH = PREFIX + Cmd.LAUNCH
     const val PAIR = PREFIX + Cmd.PAIR
     const val STATUS = PREFIX + Cmd.STATUS
@@ -108,6 +110,11 @@ object Extras {
     // wait (and launch --wait): poll until present / foreground
     const val TIMEOUT = "timeout"      // seconds (float)
     const val WAIT = "wait"            // launch: block until the app is foreground
+
+    // scroll: a swipe in a direction, optionally repeated until a query matches
+    const val DIRECTION = "direction"  // up | down | left | right (content reveal)
+    const val STEPS = "steps"          // scroll cap (with query) / count (without)
+    const val SKIP_VISIBLE = "skip_visible"  // ignore matches already on screen
 
     // gestures
     const val X = "x"
@@ -158,6 +165,24 @@ object Defaults {
     const val WAIT_POLL_MS = 300L
     const val WAIT_MAX_MS = 60_000L
     const val WAIT_INTENTS_MAX_S = 8.0
+
+    // scroll: each drag spans this fraction of the screen, centered, so it stays
+    // clear of the edge gestures (back/notification) and -- being well under one
+    // viewport -- leaves consecutive screens overlapping, so no row is skipped. the
+    // drag ends with a brief HOLD (finger still before lifting) so it releases at
+    // ~zero velocity and the list does not fling past content; because the hold,
+    // not the speed, suppresses the fling, the drag itself can be quick. in a
+    // scroll-until-found we let each step settle, then treat an unchanged screen as
+    // the end; the search is also capped at MAX_STEPS so it cannot loop forever.
+    const val SCROLL_FRACTION = 0.5
+    const val SCROLL_DURATION_MS = 250L
+    const val SCROLL_HOLD_MS = 130L
+    const val SCROLL_SETTLE_MS = 300L
+    // a scroll-until-found waits up to this long for the tree to reflect a drag
+    // before concluding the content did not move (the end). polling adapts to the
+    // device's actual settle time -- a fixed delay is too short under load.
+    const val SCROLL_CHANGE_WINDOW_MS = 1_200L
+    const val SCROLL_MAX_STEPS = 30
     const val SCREENSHOT_QUALITY = 90
     const val SCREENSHOT_FORMAT = "png"
 

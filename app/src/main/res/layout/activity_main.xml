@@ -99,6 +99,18 @@
                     android:textColor="@color/fg"
                     android:paddingVertical="8dp" />
 
+                <!-- global kill switch: disables every surface; sits at the bottom
+                     as the overall on/off for mimic. -->
+                <Switch
+                    android:id="@+id/sw_master"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/sw_master"
+                    android:textColor="@color/fg"
+                    android:textStyle="bold"
+                    android:layout_marginTop="20dp"
+                    android:paddingVertical="8dp" />
+
             </LinearLayout>
 
             <!-- ===== clients ===== -->

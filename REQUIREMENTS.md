@@ -62,6 +62,15 @@ that local server require.
   filtered by a substring of either; the component is ready to pass to launch.
   only apps visible through the manifest queries are returned, so no broad
   package-visibility permission is required.
+- R2.9 scroll the active window in a direction (up/down/left/right, naming the
+  content reveal). optionally keep scrolling until a node matching a query is
+  visible on screen (the tree may hold off-screen rows, so the match is restricted
+  to visible nodes), returning the on-screen matches, and stopping at a timeout, a
+  scroll cap, or when a scroll no longer changes the screen (the end of the
+  content). a match already on screen satisfies it immediately (scroll-into-view),
+  with an option to instead skip the already-visible matches and stop on the next
+  occurrence. without a query, perform a bounded number of scrolls. the timeout is
+  capped under the broadcast window on the intents surface.
 
 ## R3 surfaces and protocol
 
@@ -142,20 +151,25 @@ that local server require.
   address on demand, so the common path needs no manual selection.
 - R7.5 the bind interface is chosen in the ui from loopback, each detected lan
   address, or all interfaces; a non-loopback choice is flagged as network-exposed.
+- R7.6 the general tab offers a global kill switch that disables every surface at
+  once (the intents receiver and the http/mcp server) and restores them when turned
+  back on; it is kept in sync with the per-surface toggles. while the server runs it
+  posts an ongoing notification that opens the app when tapped; the notification
+  clears when the server stops or no surface is enabled.
 
 ## R8 authorization (fine-grained, per-token)
 
-- R8.1 an optional global "require approval" mode, off by default (the token is
-  then the only gate). when on, every command is authorized per token before it
-  runs.
+- R8.1 an optional global "fine-grained permissions" mode, off by default (the
+  token is then the only gate). when on, every command is authorized per token
+  before it runs.
 - R8.2 authorization is keyed by (token, action class, target app). classes:
-  read (dump/find), interact (tap/long-press/swipe/click/global), type (set-text),
-  launch, screenshot, packages; status and pair are exempt. the target is the
-  launched app for launch, the foreground app for reads/input/screenshot, and all
-  apps for the package listing.
+  read (dump/find/wait), interact (tap/long-press/swipe/click/scroll/global), type
+  (set-text), launch, screenshot, packages; status and pair are exempt. the target
+  is the launched app for launch, the foreground app for reads/input/screenshot,
+  and all apps for the package listing.
 - R8.3 each token has a mode: ask (prompt on an unknown class/app) or allow-all
-  (never prompt). paired clients default to ask; legacy tokens to allow-all, since
-  a headless client cannot answer a prompt.
+  (never prompt). every client defaults to ask; a headless client that cannot
+  answer a prompt is set to allow-all from its row in the ui.
 - R8.4 on an unknown (class, app) the user is prompted over the foreground app
   (allow or deny, with remember scope: once, this app, or all apps). the request
   blocks until the answer or a per-surface timeout (the localhost surfaces wait

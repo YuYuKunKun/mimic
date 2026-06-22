@@ -149,6 +149,45 @@ class MimicService : AccessibilityService() {
     fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean =
         dispatchPath(linePath(x1, y1, x2, y2), durationMs)
 
+    // the real size of the default display in pixels (width, height), used to
+    // derive scroll endpoints so a caller need not know the device resolution.
+    fun screenSize(): Pair<Int, Int> =
+        resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+
+    // scroll one step by dragging across the middle of the screen. the drag spans
+    // SCROLL_FRACTION of the screen, centered, so it avoids the edge gestures and
+    // stays under one viewport (consecutive scrolls overlap, no row is skipped).
+    // `direction` names the content reveal: "down" reveals lower content (the
+    // finger moves up), "right" reveals content further right (the finger moves
+    // left). it ends with a brief hold so the finger lifts at ~zero velocity and
+    // the list does not fling past content. returns false for an unknown direction.
+    fun scroll(direction: String, durationMs: Long): Boolean {
+        val (w, h) = screenSize()
+        val cx = w / 2; val cy = h / 2
+        val dx = (w * Defaults.SCROLL_FRACTION / 2).toInt()
+        val dy = (h * Defaults.SCROLL_FRACTION / 2).toInt()
+        return when (direction) {
+            "down" -> dragHold(cx, cy + dy, cx, cy - dy, durationMs)
+            "up" -> dragHold(cx, cy - dy, cx, cy + dy, durationMs)
+            "right" -> dragHold(cx + dx, cy, cx - dx, cy, durationMs)
+            "left" -> dragHold(cx - dx, cy, cx + dx, cy, durationMs)
+            else -> false
+        }
+    }
+
+    // a drag that ends by holding the finger still at the destination, so the
+    // touch is released at ~zero velocity and the underlying list does not fling.
+    // the content then moves exactly the dragged distance, which is what keeps a
+    // scroll-until-found from skipping a row between steps. implemented as a
+    // continued stroke: the move, then a same-point hold that finally lifts.
+    private fun dragHold(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
+        val move = GestureDescription.StrokeDescription(
+            linePath(x1, y1, x2, y2), 0, durationMs.coerceAtLeast(1), true)
+        if (!dispatchSync(GestureDescription.Builder().addStroke(move).build())) return false
+        val hold = move.continueStroke(linePath(x2, y2, x2, y2), 0, Defaults.SCROLL_HOLD_MS, false)
+        return dispatchSync(GestureDescription.Builder().addStroke(hold).build())
+    }
+
     fun globalNav(nav: String): Boolean {
         val action = when (nav) {
             "back" -> GLOBAL_ACTION_BACK
@@ -235,12 +274,14 @@ class MimicService : AccessibilityService() {
         lineTo(x2.toFloat(), y2.toFloat())
     }
 
+    private fun dispatchPath(path: Path, durationMs: Long): Boolean =
+        dispatchSync(GestureDescription.Builder().addStroke(
+            GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1))).build())
+
     // dispatch a gesture and block until the framework reports completion. the
     // caller runs on the receiver's async background thread, so the main-thread
     // result callback can fire and release the latch (no deadlock).
-    private fun dispatchPath(path: Path, durationMs: Long): Boolean {
-        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1))
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+    private fun dispatchSync(gesture: GestureDescription): Boolean {
         val latch = CountDownLatch(1)
         val ok = AtomicBoolean(false)
         val started = dispatchGesture(gesture, object : GestureResultCallback() {
