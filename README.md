@@ -78,7 +78,9 @@ mimic find login --by text         # nodes whose text contains "login"
 mimic tap 540 1200                 # tap a coordinate
 mimic click --id com.app:id/submit # click a node by resource-id
 mimic text "hello" --id com.app:id/search
+mimic text "hello"                 # no target -> the focused field
 mimic back                         # global navigation
+mimic packages settings            # launchable apps matching "settings"
 mimic launch com.android.settings  # launch an app
 mimic screenshot                   # capture screen -> /tmp file (last resort)
 ```
@@ -111,6 +113,11 @@ cannot mint extra tokens or revoke peers. the localhost socket is reachable by a
 local app and the intents receiver is exported, so the token is what makes
 unauthorized attempts fail. treat it as a device secret, and turn off surfaces you
 are not using.
+
+the http/mcp server binds loopback (127.0.0.1) by default, so it is reachable only
+on-device (or via `adb forward`). choosing a lan address or all interfaces in the
+app exposes it to your network -- still token-gated, but a larger attack surface;
+the app flags the choice.
 
 ## license
 

@@ -23,8 +23,10 @@ exposed over three independent **surfaces**, each separately toggleable:
   /pair` (redeem a one-time code for a token). bundled assets are copied from the
   repo root at build time (gradle `syncBootstrap`) so they always match the source.
 - **MainActivity** -- a dark onboarding ui: enable the service, start pairing or
-  reveal a legacy token, revoke clients, and toggle the three surfaces plus
-  launch-on-boot.
+  reveal a legacy token (both auto-copied to the clipboard), see a live list of
+  clients and revoke them, pick the bind interface and copy the address, and
+  toggle the three surfaces plus launch-on-boot. it observes `TokenStore` so the
+  client list updates when a client pairs over http without a reopen.
 - **BootReceiver** -- restarts the host surfaces after a reboot when launch-on-
   boot is set; it performs no accessibility action, so it stays enabled.
 
@@ -51,7 +53,10 @@ three off.
   `adb shell am broadcast`.
 - **http** and **mcp**: toggling starts/stops the foreground `HostService`, which
   runs while either is on; each route also checks its own toggle, so the two can
-  be enabled independently while sharing the socket.
+  be enabled independently while sharing the socket. the bind interface is a pref
+  (`bindAddress`, loopback by default); `onStartCommand` rebinds when it changes,
+  falling back to loopback if a saved address is gone. binding a lan address or
+  0.0.0.0 exposes the surfaces on the network, still token-gated.
 
 why three: `am` from a non-shell uid (plain termux, or termux inside proot) sends
 a broadcast but cannot wait for the result, so reads fail there. the localhost
@@ -62,20 +67,21 @@ http/mcp surfaces are reachable from proot, native termux, and the host (via
 ## command core and protocol
 
 commands have surface-agnostic short names (`Cmd`): `DUMP`, `FIND`, `TAP`,
-`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `LAUNCH`, `SCREENSHOT`,
-`STATUS` (plus intents-only `PAIR`). arguments are uniform string keys (`Extras`):
-view -> `format` (tree|flat|compact), `filter` (interactive|text|visible|all),
-`max_depth`, `package`, `fields`, and for query `by` (text|id|class|desc),
-`query`, `match` (exact|contains|regex); interact -> `x`,`y`,`x2`,`y2`,`duration`,
-`nav`,`text`; launch -> `package`,`component`,`action`,`uri`; screenshot ->
-`format` (png|jpeg), `quality`, `scale`.
+`LONG_PRESS`, `SWIPE`, `CLICK`, `SET_TEXT`, `GLOBAL`, `PACKAGES`, `LAUNCH`,
+`SCREENSHOT`, `STATUS` (plus the `PAIR` handshake). arguments are uniform string
+keys (`Extras`): view -> `format` (tree|flat|compact), `filter`
+(interactive|text|visible|all), `max_depth`, `package`, `fields`, and for query
+`by` (text|id|class|desc), `query`, `match` (exact|contains|regex); interact ->
+`x`,`y`,`x2`,`y2`,`duration`,`nav`,`text`; launch -> `package`,`component`,
+`action`,`uri`; packages -> `query`; screenshot -> `format` (png|jpeg),
+`quality`, `scale`. `SET_TEXT` with no `by`/`query` targets the input-focused node.
 
-`LAUNCH` and `STATUS` do not need the accessibility service; the rest do.
-launching uses the service (or app) context to `startActivity` and is subject to
-android background-activity-launch rules. resolving another app by package needs
-package visibility (android 11+): the manifest declares `<queries>` for launchable
-apps and uri handlers, so `getLaunchIntentForPackage` can see third-party apps
-without the broad `QUERY_ALL_PACKAGES` permission. `SCREENSHOT` uses the framework's
+`PACKAGES`, `LAUNCH`, and `STATUS` do not need the accessibility service; the rest
+do. launching uses the service (or app) context to `startActivity` and is subject
+to android background-activity-launch rules. `PACKAGES` lists launcher activities
+via `queryIntentActivities`. both rely on package visibility (android 11+): the
+manifest declares `<queries>` for launchable apps and uri handlers, so launchable
+apps are visible without the broad `QUERY_ALL_PACKAGES` permission. `SCREENSHOT` uses the framework's
 `takeScreenshot` (config `canTakeScreenshot`, api 30+, rate-limited ~1/sec) and
 returns image bytes -- `Commands.Result.data` is a `ByteArray`. http sends it raw
 (`image/png|jpeg`), mcp wraps it in an image content block, and json consumers
@@ -121,9 +127,15 @@ tree read earlier cannot cause a click on a stale coordinate.
 `HostService` answers `/mcp` with a minimal mcp server (streamable http, json-rpc
 2.0): `initialize`, `tools/list`, `tools/call`, `ping`; notifications get a 202.
 each POST is handled statelessly and answered with `application/json`. the tools
-(`mimic_dump`, `mimic_find`, `mimic_tap`, ...) wrap the same `Commands` core, with
-json-schema input. auth is at the http layer (token header), so tool calls carry
-no token themselves.
+(`mimic_dump`, `mimic_find`, `mimic_tap`, `mimic_packages`, ...) wrap the same
+`Commands` core, with json-schema input. auth is at the http layer (token header),
+so tool calls carry no token themselves.
+
+tool result text is shaped for a model, not for a parser: a success returns a
+plain affirmative ("launched the app", "performed") rather than the raw
+`{"launched":true}` flag, and `isError` carries the success/failure bit (the error
+message is the text on failure). this keeps a model from misreading a successful
+action as a failure.
 
 ## authentication
 

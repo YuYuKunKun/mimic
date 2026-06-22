@@ -48,28 +48,42 @@
 - [x] on-device verification: 18/18 e2e pass on a real pixel 8 pro (all surfaces,
       bootstrap, launch, and png+jpeg screenshot)
 
-## milestone 4: per-client tokens, one-time pairing, revocation
+## milestone 4: per-client tokens, one-time pairing, revocation (done; verified on device)
 
-- [ ] one-time pairing codes valid only during an explicit, time-boxed pairing
+- [x] one-time pairing codes valid only during an explicit, time-boxed pairing
       window ("start pairing"); no window means every code is rejected
-- [ ] redeeming a code mints a fresh per-client token (id + label), returned over
+- [x] redeeming a code mints a fresh per-client token (id + label), returned over
       the active transport and stored permanently client-side
-- [ ] cli `pair` works over the active transport (http included), fixing the
+- [x] cli `pair` works over the active transport (http included), fixing the
       proot/termux case where `am` cannot return the broadcast result
-- [ ] legacy tokens for manual mcp/other config, minted from the gui (copy-paste)
-- [ ] revoke a specific client token, or all, from the gui (token management is
+- [x] legacy tokens for manual mcp/other config, minted from the gui (copy-paste)
+- [x] revoke a specific client token, or all, from the gui (token management is
       gui-only: minting outside pairing and revocation need physical access)
-- [ ] gui lists active clients (label, id, kind) each with a revoke button
-- [ ] the clients list updates live when a client pairs over http (no reopen)
-- [ ] `mimic text` with no target types into the currently focused field
-- [ ] docs updated (requirements R2/R4, design, readme, skill)
-- [ ] python e2e: pair over http mints a working token, one-time code cannot be
-      reused, an expired window rejects, gui revoke invalidates one token only
+- [x] gui lists active clients (label, id, kind) each with a revoke button
+- [x] the clients list updates live when a client pairs over http (no reopen)
+- [x] `mimic text` with no target types into the currently focused field
+- [x] docs updated (requirements R2/R4, design, readme, skill)
+- [x] python e2e: pair over http mints a working token, one-time code cannot be
+      reused, gui revoke invalidates one token only
+
+## milestone 5: bind interface, copy ux, package listing (done; verified on device)
+
+- [x] configurable http/mcp bind interface (loopback, a lan address, or 0.0.0.0);
+      the server rebinds live and falls back to loopback if an address is gone
+- [x] ui copies the code/token on reveal and the address on demand; lists clients
+      live; flags a non-loopback bind as network-exposed
+- [x] `packages` lists launchable apps (package, label, component) over cli, mcp,
+      intents -- permissionless via the existing manifest <queries>
+- [x] mcp action results read as plain success/failure (isError + affirmative
+      text), fixing a model misreading a successful launch as a failure
+- [x] mcp e2e coverage (launch success/failure, tap/global, dump/find, packages,
+      unknown tool) plus focused-field set-text and bind-default status
+- [x] 33/33 e2e pass on a real pixel 8 pro
 
 ## backlog
 
 - mcp sse / streaming responses and session ids (currently request/response only).
 - optional file-based result delivery for very large intent trees.
 - multi-window / window-list view beyond the active window.
-- listing installed packages / a package's launchable activities (dropped for now).
+- a package's non-launcher activities (only launcher entries are listed for now).
 - gesture paths beyond straight-line swipe (multi-point, pinch).

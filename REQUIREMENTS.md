@@ -12,12 +12,15 @@ of capabilities to external automation, over one or more local surfaces:
 - **interact**: drive the ui (tap, long press, swipe, click, set text, and the
   global navigation actions back/home/recents/notifications).
 - **launch**: start an app or activity (by package, component, or action/uri).
+- **list**: enumerate launchable apps (package, label, launcher component).
 - **capture**: take a screenshot (a last resort; the text tree is preferred).
 
-nothing else. no off-device network, no notification reading, no contact/phone/
-storage access. the one networking facility is a loopback-only (127.0.0.1) server
-for on-device clients; data never leaves the device. the permission surface stays
-as small as the accessibility framework and that local server require.
+nothing else: no notification reading, and no contact, phone, or storage access.
+the one networking facility is a local http server, bound to loopback (127.0.0.1)
+by default so data stays on-device; the user may opt to bind a chosen network
+interface (or all interfaces) to reach it from another machine, still gated by the
+token. the permission surface stays as small as the accessibility framework and
+that local server require.
 
 ## R1 view
 
@@ -49,6 +52,10 @@ as small as the accessibility framework and that local server require.
   framework. http returns raw image bytes, mcp an image content block, intents
   base64; the cli writes it to a file. it is a last resort relative to the tree,
   and is rate-limited by android to about one per second.
+- R2.8 list launchable apps as {package, label, launcher component}, optionally
+  filtered by a substring of either; the component is ready to pass to launch.
+  only apps visible through the manifest queries are returned, so no broad
+  package-visibility permission is required.
 
 ## R3 surfaces and protocol
 
@@ -56,9 +63,14 @@ as small as the accessibility framework and that local server require.
   toggleable surfaces:
   - **intents**: ordered broadcast intents invoked with `am`/`termux-am`/adb
     `broadcast`; results returned in the broadcast result data as base64-json.
-  - **http**: a token-gated rest api on `127.0.0.1` (`/v1/<cmd>`), json in/out.
+  - **http**: a token-gated rest api (`/v1/<cmd>`), json in/out.
   - **mcp**: an in-app model context protocol server (streamable http, json-rpc)
-    on the same localhost port (`/mcp`), exposing the commands as mcp tools.
+    on the same port (`/mcp`), exposing the commands as mcp tools.
+- R3.1a the http/mcp server binds loopback (127.0.0.1) by default. the user may
+  choose another interface address, or all interfaces (0.0.0.0), to reach it from
+  another machine; the server rebinds on change and the token still gates every
+  request. action results returned to mcp clients are unambiguous: a clear
+  affirmative on success, the error text with isError on failure.
 - R3.2 the intents result must survive `am`/`termux-am` output parsing and need
   no storage permission; the localhost surfaces return plain json.
 - R3.3 every command reports a clear status and error message on failure
@@ -112,10 +124,15 @@ as small as the accessibility framework and that local server require.
 ## R7 app lifecycle and ui
 
 - R7.1 a simple, dark onboarding screen walks the user through the steps that
-  only a human can do: enable the accessibility service, reveal the token, and
-  turn on the surfaces.
+  only a human can do: enable the accessibility service, pair a client or reveal a
+  legacy token, choose the bind interface, and turn on the surfaces.
 - R7.2 each surface (intents, http, mcp) has its own independent on/off toggle
   and acts as a local kill-switch. stopping the intents surface disables the
   receiver component outright; stopping http/mcp stops the localhost server. a
   fresh install has every surface off.
 - R7.3 an opt-in "start on boot" restores the surfaces after a reboot.
+- R7.4 the ui lists active clients (label, id, kind) and updates live as clients
+  pair; it copies the code and token to the clipboard when shown and the bind
+  address on demand, so the common path needs no manual selection.
+- R7.5 the bind interface is chosen in the ui from loopback, each detected lan
+  address, or all interfaces; a non-loopback choice is flagged as network-exposed.

@@ -19,6 +19,7 @@ object Cmd {
     const val LAUNCH = "LAUNCH"
     const val SCREENSHOT = "SCREENSHOT"
     const val STATUS = "STATUS"
+    const val PACKAGES = "PACKAGES"
     const val PAIR = "PAIR"
 }
 

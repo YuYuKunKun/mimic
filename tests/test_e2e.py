@@ -18,6 +18,7 @@ def test_http_status(token):
     assert s == 200 and b["ok"]
     assert b["data"]["service_enabled"] is True
     assert b["data"]["http"] is True
+    assert b["data"]["bind"] == "127.0.0.1"  # loopback by default
 
 
 def test_http_healthz_unauthenticated(token):
@@ -114,6 +115,39 @@ def test_http_launch_app(token):
     assert "com.android.settings" in top
 
 
+def test_http_packages_lists_launchable(token):
+    s, b = adb.http("POST", "/v1/packages", token)
+    assert s == 200 and b["ok"] and isinstance(b["data"], list) and b["data"]
+    assert {"package", "label", "component"} <= set(b["data"][0].keys())
+    assert "com.android.settings" in [e["package"] for e in b["data"]]
+
+
+def test_http_packages_query_filter(token):
+    s, b = adb.http("POST", "/v1/packages", token, {"query": "settings"})
+    assert s == 200 and b["ok"]
+    assert all("settings" in (e["package"] + e["label"]).lower() for e in b["data"])
+
+
+def test_set_text_into_focused_field(token):
+    # set-text with no target should land in whatever field has input focus.
+    adb.shell("am", "start", "-a", "android.intent.action.INSERT", "-t", "vnd.android.cursor.dir/contact")
+    time.sleep(2.0)
+    s, b = adb.http("POST", "/v1/find", token, {"query": "EditText", "by": "class"})
+    fields = b.get("data") or []
+    if not (s == 200 and b["ok"] and fields):
+        pytest.skip("no editable field available to focus")
+    cx, cy = fields[0]["center"]
+    adb.http("POST", "/v1/click", token, {"x": cx, "y": cy})  # focus it
+    time.sleep(0.5)
+    s, b = adb.http("POST", "/v1/set_text", token, {"text": "mimicfocus"})  # no target
+    assert s == 200 and b["ok"] and b["data"]["performed"] is True, b
+    time.sleep(0.5)
+    s, b = adb.http("POST", "/v1/find", token, {"query": "mimicfocus", "by": "text"})
+    assert s == 200 and b["ok"] and len(b["data"]) >= 1, b
+    adb.shell("input", "keyevent", "KEYCODE_BACK")
+    adb.shell("input", "keyevent", "KEYCODE_BACK")
+
+
 # ---- pairing and per-client tokens ----
 
 def _wrong_code(code):
@@ -208,6 +242,57 @@ def test_mcp_tools_call_status(token):
 def test_mcp_rejects_bad_token(token):
     s, b = adb.http("POST", "/mcp", "WRONGTOKEN", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     assert s == 401
+
+
+def _mcp_call(token, name, args=None):
+    s, b = adb.mcp(token, "tools/call", {"name": name, "arguments": args or {}})
+    return b["result"]
+
+
+def test_mcp_launch_success_reads_as_success(token):
+    # the reported bug: a successful launch must not read as a failure. isError is
+    # false and the text is a plain affirmative, not raw {"launched":true}.
+    adb.shell("am", "start", "-n", adb.ACTIVITY)  # foreground first (bal grace)
+    time.sleep(1.0)
+    r = _mcp_call(token, "mimic_launch", {"package": "com.android.settings"})
+    assert r["isError"] is False, r
+    text = r["content"][0]["text"].lower()
+    assert "launch" in text and "no launch" not in text and "fail" not in text, text
+    time.sleep(1.5)
+    top = adb.top_activity()
+    _mcp_call(token, "mimic_global", {"nav": "home"})
+    assert "com.android.settings" in top
+
+
+def test_mcp_launch_failure_is_error(token):
+    r = _mcp_call(token, "mimic_launch", {"package": "com.example.nope"})
+    assert r["isError"] is True
+    assert "no launch intent" in r["content"][0]["text"]
+
+
+def test_mcp_tap_and_global(token):
+    r = _mcp_call(token, "mimic_tap", {"x": 10, "y": 10})
+    assert r["isError"] is False and "perform" in r["content"][0]["text"].lower()
+    r = _mcp_call(token, "mimic_global", {"nav": "home"})
+    assert r["isError"] is False
+
+
+def test_mcp_dump_and_find(token):
+    r = _mcp_call(token, "mimic_dump", {"filter": "interactive", "format": "compact"})
+    assert r["isError"] is False and isinstance(r["content"][0]["text"], str)
+    r = _mcp_call(token, "mimic_find", {"query": "the", "by": "text"})
+    assert r["isError"] is False
+
+
+def test_mcp_packages(token):
+    r = _mcp_call(token, "mimic_packages", {"query": "settings"})
+    assert r["isError"] is False
+    assert "com.android.settings" in r["content"][0]["text"]
+
+
+def test_mcp_unknown_tool_is_error(token):
+    r = _mcp_call(token, "mimic_nope", {})
+    assert r["isError"] is True and "unknown tool" in r["content"][0]["text"]
 
 
 # ---- intents surface (over adb shell am, shell uid returns results) ----

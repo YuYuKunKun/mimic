@@ -342,6 +342,13 @@ cmd_text() {
 
 cmd_global() { need_token; send GLOBAL nav "$1"; }
 
+cmd_packages() {
+    need_token
+    set -- PACKAGES
+    [ -n "${1:-}" ] && set -- "$@" query "$1"
+    send "$@"
+}
+
 cmd_launch() {
     need_token
     _pkg=; _component=; _action=; _uri=
@@ -434,6 +441,7 @@ interact:
   mimic text VALUE [--id ID | --text T | --class C | --desc D] [--match M]
                   (no target -> types into the currently focused field)
   mimic back | home | recents | notifications
+  mimic packages [QUERY]               list launchable apps (package, label, component)
   mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
   mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
                   (last resort; prefer the text tree. writes a /tmp file, prints the path)
@@ -472,6 +480,7 @@ case "$cmd" in
     home) cmd_global home ;;
     recents) cmd_global recents ;;
     notifications|notif) cmd_global notifications ;;
+    packages|apps) cmd_packages "$@" ;;
     launch) cmd_launch "$@" ;;
     screenshot|shot) cmd_screenshot "$@" ;;
     help|-h|--help) usage ;;

@@ -28,6 +28,7 @@ import java.util.concurrent.Executors
 class HostService : Service() {
 
     @Volatile private var server: ServerSocket? = null
+    @Volatile private var boundAddress: String? = null
     private var acceptor: Thread? = null
     private lateinit var workers: ExecutorService
 
@@ -39,8 +40,9 @@ class HostService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val desired = AppState.bindAddress(this)
+        if (server == null || boundAddress != desired) startServer(desired)
         startForegroundNotice()
-        if (server == null) startServer()
         return START_STICKY
     }
 
@@ -51,10 +53,12 @@ class HostService : Service() {
         super.onDestroy()
     }
 
-    private fun startServer() {
-        val socket = ServerSocket()
-        socket.reuseAddress = true
-        socket.bind(InetSocketAddress(InetAddress.getByName(Host.ADDR), Host.PORT))
+    // (re)bind on the chosen interface, falling back to loopback if that address
+    // is unavailable (e.g. a saved lan ip that has since changed).
+    private fun startServer(addr: String) {
+        try { server?.close() } catch (_: Exception) {}
+        val (socket, bound) = bind(addr) ?: bind(Net.LOOPBACK) ?: return
+        boundAddress = bound
         server = socket
         acceptor = Thread {
             while (!socket.isClosed) {
@@ -62,6 +66,15 @@ class HostService : Service() {
                 workers.execute { serve(client) }
             }
         }.also { it.isDaemon = true; it.start() }
+    }
+
+    private fun bind(addr: String): Pair<ServerSocket, String>? = try {
+        ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(InetAddress.getByName(addr), Host.PORT))
+        } to addr
+    } catch (_: Exception) {
+        null
     }
 
     private fun serve(client: Socket) {
@@ -218,16 +231,19 @@ class HostService : Service() {
         respondBytes(out, "200 OK", bytes, contentType)
     }
 
-    private fun indexText(): String = """
+    private fun indexText(): String {
+        val host = Net.displayHost(boundAddress ?: Net.LOOPBACK)
+        return """
         mimic host server.
 
         bootstrap the cli:
-          curl -s http://${Host.ADDR}:${Host.PORT}/cli/mimic -o mimic && chmod +x mimic
+          curl -s http://$host:${Host.PORT}/cli/mimic -o mimic && chmod +x mimic
         docs:
-          http://${Host.ADDR}:${Host.PORT}/SKILL.md
+          http://$host:${Host.PORT}/SKILL.md
         mcp endpoint:
-          http://${Host.ADDR}:${Host.PORT}/mcp  (header x-mimic-token)
-    """.trimIndent() + "\n"
+          http://$host:${Host.PORT}/mcp  (header x-mimic-token)
+        """.trimIndent() + "\n"
+    }
 
     private fun error(message: String): String =
         Commands.Result(false, null, message).toJson().toString()
@@ -248,9 +264,10 @@ class HostService : Service() {
             if (AppState.http(this@HostService)) add("http")
             if (AppState.mcp(this@HostService)) add("mcp")
         }.joinToString("+").ifEmpty { "idle" }
+        val host = Net.displayHost(boundAddress ?: AppState.bindAddress(this))
         val notification: Notification = Notification.Builder(this, channelId)
             .setContentTitle("mimic")
-            .setContentText("serving $surfaces on ${Host.ADDR}:${Host.PORT}")
+            .setContentText("serving $surfaces on $host:${Host.PORT}")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()

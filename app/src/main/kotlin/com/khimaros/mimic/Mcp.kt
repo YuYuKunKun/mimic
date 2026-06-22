@@ -51,9 +51,14 @@ object Mcp {
         if (result.ok && data is ByteArray) {
             return imageResult(data, get(Extras.FORMAT))
         }
+        // action results carry a terse json flag ({"launched":true}); a model can
+        // misread that as failure, so map success to a plain affirmative. isError
+        // already distinguishes failure (where the text is the error message).
         val text = when {
             !result.ok -> result.error ?: "error"
             data is String -> data
+            data is JSONObject && data.optBoolean("launched") -> "launched the app"
+            data is JSONObject && data.optBoolean("performed") -> "performed"
             data != null -> data.toString()
             else -> "ok"
         }
@@ -97,6 +102,7 @@ object Mcp {
         "mimic_click" to Cmd.CLICK,
         "mimic_set_text" to Cmd.SET_TEXT,
         "mimic_global" to Cmd.GLOBAL,
+        "mimic_packages" to Cmd.PACKAGES,
         "mimic_launch" to Cmd.LAUNCH,
         "mimic_screenshot" to Cmd.SCREENSHOT,
     )
@@ -151,6 +157,8 @@ object Mcp {
             schema(listOf("text"), mapOf("text" to prop("string", "text to enter"), "by" to BY, "query" to prop("string", "value to match (omit to target the focused field)"), "match" to MATCH))),
         tool("mimic_global", "perform a global navigation action",
             schema(listOf("nav"), mapOf("nav" to prop("string", "back | home | recents | notifications", listOf("back", "home", "recents", "notifications"))))),
+        tool("mimic_packages", "list launchable apps as {package, label, component}; optionally filter by a substring of either. the component can be passed straight to mimic_launch",
+            schema(emptyList(), mapOf("query" to prop("string", "filter by package or label substring")))),
         tool("mimic_launch", "launch an app or activity (by package, component, or action/uri)",
             schema(emptyList(), mapOf(
                 "package" to prop("string", "launch this app's main activity"),

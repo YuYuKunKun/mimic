@@ -2,6 +2,8 @@ package com.khimaros.mimic
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -11,10 +13,14 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 
 // a single onboarding screen, dark and minimal: enable the service, pair a client
 // (or reveal a legacy token), revoke clients, then independently toggle the three
@@ -25,6 +31,12 @@ class MainActivity : Activity() {
     private lateinit var serviceStatus: TextView
     private lateinit var creds: TextView
     private lateinit var clients: LinearLayout
+    private lateinit var address: TextView
+    private lateinit var lanWarning: TextView
+
+    // the bind options and the currently selected interface.
+    private var bindOptions: List<String> = emptyList()
+    private var currentBind: String = Net.LOOPBACK
 
     // a client pairing over http mints a token from a server worker thread, off
     // the ui; refresh the list live so it does not require an exit/reopen.
@@ -42,14 +54,18 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.open_settings).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        // the code and token are copied to the clipboard the moment they are
+        // shown, so the common path is one tap.
         findViewById<Button>(R.id.start_pairing).setOnClickListener {
             val code = TokenStore.startPairing(System.currentTimeMillis())
             creds.text = getString(R.string.code_fmt, Defaults.PAIRING_WINDOW_MS / 60_000L, code)
+            copy(code)
         }
         findViewById<Button>(R.id.legacy_token).setOnClickListener {
             val rec = TokenStore.mintLegacy(this, Defaults.KIND_LEGACY)
             creds.text = getString(R.string.legacy_fmt, rec.token)
             refreshClients()
+            copy(rec.token)
         }
         findViewById<Button>(R.id.clear_paired).setOnClickListener {
             TokenStore.clear(this)
@@ -72,6 +88,56 @@ class MainActivity : Activity() {
             isChecked = AppState.startOnBoot(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> AppState.setStartOnBoot(this@MainActivity, checked) }
         }
+        setupBind()
+    }
+
+    // populate the bind-interface spinner (loopback, each detected lan ip, then
+    // 0.0.0.0) and reflect the selection in the copyable address line.
+    private fun setupBind() {
+        address = findViewById(R.id.address)
+        lanWarning = findViewById(R.id.lan_warning)
+        currentBind = AppState.bindAddress(this)
+
+        val opts = LinkedHashMap<String, String>()
+        opts[Net.LOOPBACK] = "${Net.LOOPBACK} (this device only)"
+        for ((ip, name) in Net.lanAddresses()) opts[ip] = "$ip ($name)"
+        opts[Net.ALL] = "${Net.ALL} (all interfaces)"
+        opts.putIfAbsent(currentBind, currentBind)  // a saved ip that is gone now
+        bindOptions = opts.keys.toList()
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, opts.values.toList())
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        findViewById<Spinner>(R.id.bind_spinner).apply {
+            this.adapter = adapter
+            setSelection(bindOptions.indexOf(currentBind).coerceAtLeast(0))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                    val chosen = bindOptions[pos]
+                    if (chosen != currentBind) {
+                        currentBind = chosen
+                        AppState.setBindAddress(this@MainActivity, chosen)
+                        updateAddress()
+                    }
+                }
+                override fun onNothingSelected(p: AdapterView<*>?) {}
+            }
+        }
+        findViewById<Button>(R.id.copy_address).setOnClickListener { copy(addressValue()) }
+        updateAddress()
+    }
+
+    private fun addressValue(): String = "${Net.displayHost(currentBind)}:${Host.PORT}"
+
+    private fun updateAddress() {
+        address.text = getString(R.string.address_fmt, Net.displayHost(currentBind), Host.PORT)
+        lanWarning.visibility = if (Net.isLoopback(currentBind)) View.GONE else View.VISIBLE
+    }
+
+    private fun copy(value: String?) {
+        if (value.isNullOrEmpty()) return
+        getSystemService(ClipboardManager::class.java)
+            .setPrimaryClip(ClipData.newPlainText("mimic", value))
+        Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
@@ -83,6 +149,7 @@ class MainActivity : Activity() {
         val state = getString(if (MimicService.isEnabled()) R.string.enabled else R.string.disabled)
         serviceStatus.text = getString(R.string.service_state, state)
         refreshClients()
+        updateAddress()
         TokenStore.observe(this, authListener)
     }
 

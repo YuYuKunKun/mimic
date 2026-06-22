@@ -19,11 +19,22 @@ object AppState {
     private const val KEY_HTTP = "http"
     private const val KEY_MCP = "mcp"
     private const val KEY_BOOT = "start_on_boot"
+    private const val KEY_BIND = "bind_address"
 
     fun intents(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_INTENTS, false)
     fun http(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_HTTP, false)
     fun mcp(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_MCP, false)
     fun startOnBoot(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_BOOT, false)
+
+    // the interface the http/mcp server binds; loopback by default.
+    fun bindAddress(ctx: Context): String = prefs(ctx).getString(KEY_BIND, Net.LOOPBACK) ?: Net.LOOPBACK
+
+    // change the bind interface and re-apply: the running server rebinds because
+    // onStartCommand notices the address differs.
+    fun setBindAddress(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_BIND, value).apply()
+        applyHost(ctx)
+    }
 
     fun setStartOnBoot(ctx: Context, value: Boolean) =
         prefs(ctx).edit().putBoolean(KEY_BOOT, value).apply()

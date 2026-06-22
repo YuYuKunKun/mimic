@@ -98,9 +98,10 @@ interact (stateless -- targets re-resolve every call):
                    (no target -> types into the currently focused field)
   mimic back | home | recents | notifications
 
-launch an app or activity:
+discover and launch apps:
+  mimic packages [QUERY]                list launchable apps as {package,label,component}
   mimic launch PACKAGE                  launch an app by package
-  mimic launch --component PKG/.ACT     launch an explicit activity
+  mimic launch --component PKG/.ACT     launch an explicit activity (e.g. from packages)
   mimic launch --action ACTION [--uri URI] [--package PKG]
   mimic launch --uri URI                open a uri (ACTION_VIEW)
 
@@ -204,9 +205,12 @@ most clients take a json entry; the exact keys vary by client, but the shape is:
 }
 ```
 
-if the client runs on a different host than the phone, forward the port first:
-`adb forward tcp:8473 tcp:8473`. the tools are `mimic_dump`, `mimic_find`,
-`mimic_tap`, `mimic_long_press`, `mimic_swipe`, `mimic_click`, `mimic_set_text`,
-`mimic_global`, `mimic_launch`, `mimic_status`; their arguments mirror the cli flags.
+if the client runs on a different host than the phone, forward the port with
+`adb forward tcp:8473 tcp:8473`, or set the bind interface to a lan address /
+0.0.0.0 in the app and use the device ip (the app shows and copies the address).
+the tools are `mimic_dump`, `mimic_find`, `mimic_tap`, `mimic_long_press`,
+`mimic_swipe`, `mimic_click`, `mimic_set_text`, `mimic_global`, `mimic_packages`,
+`mimic_launch`, `mimic_status`; their arguments mirror the cli flags. action tools
+answer with a plain success message and an `isError` flag, not a raw json blob.
 
 the rest api and raw intent protocol are documented in [DESIGN.md](DESIGN.md).

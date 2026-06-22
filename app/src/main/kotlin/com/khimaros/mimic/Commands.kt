@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Base64
 import android.view.accessibility.AccessibilityNodeInfo
+import org.json.JSONArray
 import org.json.JSONObject
 
 // the surface-agnostic command core. the intent receiver, the rest endpoint, and
@@ -36,7 +37,8 @@ object Commands {
     fun run(ctx: Context, action: String, get: (String) -> String?): Result = try {
         when (action) {
             Cmd.STATUS -> ok(status(ctx))
-            Cmd.LAUNCH -> launch(ctx, get)   // launching does not need the mimic service
+            Cmd.PACKAGES -> packages(ctx, get)   // package listing does not need the mimic service
+            Cmd.LAUNCH -> launch(ctx, get)       // launching does not need the mimic service
             else -> withService { service -> dispatch(service, action, get) }
         }
     } catch (e: IllegalArgumentException) {
@@ -51,6 +53,7 @@ object Commands {
         .put("intents", AppState.intents(ctx))
         .put("http", AppState.http(ctx))
         .put("mcp", AppState.mcp(ctx))
+        .put("bind", AppState.bindAddress(ctx))
         .put("port", Host.PORT)
 
     private inline fun withService(block: (MimicService) -> Result): Result {
@@ -111,6 +114,27 @@ object Commands {
     private fun resolve(service: MimicService, get: (String) -> String?): AccessibilityNodeInfo? =
         if (get(Extras.QUERY).isNullOrEmpty()) null
         else NodeTree.firstMatch(service.activeRoot(), ViewConfig.from(get))
+
+    // list launchable apps (package, label, launcher component), optionally
+    // filtered by a substring of either. only apps visible through the manifest
+    // <queries> (launcher activities) are returned, so no broad-visibility
+    // permission is needed; the component is ready to pass to launch.
+    private fun packages(ctx: Context, get: (String) -> String?): Result {
+        val query = get(Extras.QUERY)?.lowercase()
+        val pm = ctx.packageManager
+        val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val rows = pm.queryIntentActivities(main, 0).mapNotNull { ri ->
+            val ai = ri.activityInfo ?: return@mapNotNull null
+            val label = ri.loadLabel(pm).toString()
+            if (query != null && query !in ai.packageName.lowercase() && query !in label.lowercase()) null
+            else Triple(label, ai.packageName, "${ai.packageName}/${ai.name}")
+        }.sortedBy { it.first.lowercase() }
+        val arr = JSONArray()
+        for ((label, pkg, component) in rows) {
+            arr.put(JSONObject().put("package", pkg).put("label", label).put("component", component))
+        }
+        return ok(arr)
+    }
 
     // start an activity by package (its launcher), explicit component, or
     // action/uri. uses the mimic service context when available. note: android
