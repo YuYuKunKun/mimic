@@ -80,8 +80,9 @@ mimic click --id com.app:id/submit # click a node by resource-id
 mimic text "hello" --id com.app:id/search
 mimic text "hello"                 # no target -> the focused field
 mimic back                         # global navigation
-mimic packages settings            # launchable apps matching "settings"
-mimic launch com.android.settings  # launch an app
+mimic wait Login --by text         # block until a "Login" node appears (default 10s)
+mimic packages settings --fuzzy    # launchable apps matching "settings" (typo-tolerant)
+mimic launch com.android.settings --wait  # launch and wait until it is foreground
 mimic screenshot                   # capture screen -> /tmp file (last resort)
 ```
 
@@ -118,6 +119,17 @@ the http/mcp server binds loopback (127.0.0.1) by default, so it is reachable on
 on-device (or via `adb forward`). choosing a lan address or all interfaces in the
 app exposes it to your network -- still token-gated, but a larger attack surface;
 the app flags the choice.
+
+for tighter control, turn on **require approval for actions**. each client (token)
+is then authorized per action class (read, interact, type, launch, screenshot,
+packages) and target app: the first time a client tries something new, a prompt
+appears over the foreground app ("`<client>` wants to tap in `<app>`") with allow,
+deny, and a remember scope (once / this app / all apps). the request waits for your
+answer. paired clients default to asking; legacy tokens default to allow-all (for
+headless mcp clients that cannot answer a prompt). each client's grants and mode
+are listed in the app and revocable individually. the prompt uses an accessibility
+overlay; granting the optional "draw over other apps" permission makes it more
+robust.
 
 ## license
 

@@ -25,7 +25,16 @@ def installed(require_device):
 def token(installed):
     """reveal a legacy token and enable intents + http + mcp, then forward the port."""
     tok = adb.reveal_token()
+    adb.select_tab("surfaces")
     for label in ("intents", "local http", "mcp server"):
         adb.ensure_switch(label, True)
     adb.forward()
     return tok
+
+
+@pytest.fixture
+def approval_on(token):
+    """turn on global approval enforcement for one test, restoring off after."""
+    adb.set_approval(True)
+    yield
+    adb.set_approval(False)

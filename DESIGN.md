@@ -22,11 +22,13 @@ exposed over three independent **surfaces**, each separately toggleable:
   `/cli/mimic`, `/SKILL.md` from bundled assets (bootstrap/update), and `POST
   /pair` (redeem a one-time code for a token). bundled assets are copied from the
   repo root at build time (gradle `syncBootstrap`) so they always match the source.
-- **MainActivity** -- a dark onboarding ui: enable the service, start pairing or
-  reveal a legacy token (both auto-copied to the clipboard), see a live list of
-  clients and revoke them, pick the bind interface and copy the address, and
-  toggle the three surfaces plus launch-on-boot. it observes `TokenStore` so the
-  client list updates when a client pairs over http without a reopen.
+- **MainActivity** -- a dark onboarding ui in three bottom tabs. general:
+  accessibility + draw-over status (each with a "grant" button), require-approval,
+  launch-on-boot. clients: start pairing or reveal a legacy token (both auto-copied
+  to the clipboard), and a live list of clients -- each with its mode, its grants,
+  and revoke. surfaces: the three surface toggles, the bind interface, and the
+  copyable address. it observes `TokenStore` so the client list updates when a
+  client pairs over http without a reopen.
 - **BootReceiver** -- restarts the host surfaces after a reboot when launch-on-
   boot is set; it performs no accessibility action, so it stays enabled.
 
@@ -158,6 +160,28 @@ the ui mints a long-lived token to paste into clients that cannot pair (mcp
 config). minting outside pairing and revocation are gui-only, so a remote client
 can neither create extra tokens nor revoke peers. the ui lists active clients and
 revokes one by `id` (others keep working) or all at once.
+
+## authorization
+
+a second, optional gate sits above the token: per-token approval (`AppState.
+requireApproval`, off by default). when on, `Commands.runGuarded` -- which every
+surface calls with the verified token record -- resolves a decision for the
+command's (`ActionClass`, target app) before running it. `Permissions` stores
+allow/deny rules per token id; an exact (class, app) rule beats a (class, `*`)
+wildcard, and with no rule the token's `mode` decides (`allow_all` -> allow,
+`ask` -> prompt). the target is the launched package for launch, the foreground
+app (`rootInActiveWindow.packageName`) for reads/input/screenshot, and `*` for the
+listing; `status`/`pair` are exempt.
+
+an `ask` decision calls `MimicService.promptPermission`, which posts an allow/deny
+overlay to the main thread and blocks the request thread on a latch until the user
+answers or the surface timeout elapses (`PROMPT_TIMEOUT_HTTP_MS` is generous so the
+one call returns the real result; intents is capped under the broadcast window).
+the overlay is a `TYPE_ACCESSIBILITY_OVERLAY` (no extra permission); when the
+optional `SYSTEM_ALERT_WINDOW` is granted it upgrades to `TYPE_APPLICATION_OVERLAY`.
+remembering "this app"/"all apps" writes a rule; on timeout the request returns
+`permission_required` so the client retries after approval. headless clients use a
+legacy token (default `allow_all`) so they never block on a prompt.
 
 ## clients
 

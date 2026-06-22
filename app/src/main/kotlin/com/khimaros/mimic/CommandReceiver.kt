@@ -31,7 +31,14 @@ class CommandReceiver : BroadcastReceiver() {
     }
 
     private fun handle(ctx: Context, intent: Intent): Pair<Int, String> {
-        val get = { k: String -> intent.getStringExtra(k) }
+        val get = { k: String ->
+            val v = intent.getStringExtra(k)
+            // keep a wait under the broadcast window so the receiver does not anr;
+            // longer waits need the http surface.
+            if (k == Extras.TIMEOUT && v != null)
+                minOf(v.toDoubleOrNull() ?: Defaults.WAIT_INTENTS_MAX_S, Defaults.WAIT_INTENTS_MAX_S).toString()
+            else v
+        }
         val action = Actions.shortName(intent.action)
 
         // pairing is intent-specific and unauthenticated (it is how a client
@@ -44,10 +51,13 @@ class CommandReceiver : BroadcastReceiver() {
         }
         if (action == Cmd.STATUS) return OK to envelope(Commands.run(ctx, action, get))
 
-        if (!TokenStore.verify(ctx, get(Extras.TOKEN)))
-            return AUTH_FAILED to envelope(Commands.Result(false, null, "unauthorized: bad or missing token"))
+        // auth on: a valid token is required; auth off: run anonymously.
+        val record = if (AppState.requireAuth(ctx)) {
+            TokenStore.find(ctx, get(Extras.TOKEN))
+                ?: return AUTH_FAILED to envelope(Commands.Result(false, null, "unauthorized: bad or missing token"))
+        } else null
 
-        val result = Commands.run(ctx, action, get)
+        val result = Commands.runGuarded(ctx, action, get, record, Defaults.PROMPT_TIMEOUT_INTENTS_MS)
         return (if (result.ok) OK else GENERIC_ERROR) to envelope(result)
     }
 

@@ -45,6 +45,59 @@ object Commands {
         fail(e.message ?: "bad arguments")
     }
 
+    // authorization wrapper around run(). with approval enforcement off (the
+    // default) or for an exempt command, it falls straight through. otherwise it
+    // resolves the per-token grant for this (class, target app), prompting the user
+    // when unknown and waiting up to the surface's timeout.
+    fun runGuarded(
+        ctx: Context,
+        action: String,
+        get: (String) -> String?,
+        record: TokenStore.Record?,
+        promptTimeoutMs: Long,
+    ): Result {
+        if (record == null || !AppState.requireApproval(ctx)) return run(ctx, action, get)
+        val cls = ActionClass.of(action) ?: return run(ctx, action, get)
+        val target = targetOf(get, cls)
+        return when (Permissions.decision(ctx, record.id, record.mode, cls, target)) {
+            Permissions.Decision.ALLOW -> run(ctx, action, get)
+            Permissions.Decision.DENY -> denied(cls, target)
+            Permissions.Decision.ASK -> ask(ctx, action, get, record, cls, target, promptTimeoutMs)
+        }
+    }
+
+    private fun ask(
+        ctx: Context, action: String, get: (String) -> String?,
+        record: TokenStore.Record, cls: String, target: String, timeoutMs: Long,
+    ): Result {
+        val service = MimicService.instance
+            ?: return fail("permission_required: enable the mimic accessibility service to approve")
+        // blocks until the user answers the on-device prompt or the window closes.
+        val outcome = service.promptPermission(record.label, record.id, cls, target, timeoutMs)
+            ?: return fail("permission_required: approval prompt is showing on the device -- approve it, then run this again")
+        if (outcome.scope != Permissions.Scope.ONCE) {
+            val t = if (outcome.scope == Permissions.Scope.ALL_APPS) Permissions.TARGET_ANY else target
+            Permissions.remember(ctx, record.id, cls, t, outcome.allowed)
+        }
+        return if (outcome.allowed) run(ctx, action, get) else denied(cls, target)
+    }
+
+    private fun denied(cls: String, target: String): Result =
+        fail("permission_denied: not allowed to ${ActionClass.verb(cls)} ${targetLabel(target)}")
+
+    // the app a request acts on: the launched package for launch, the foreground
+    // app for screen reads and input, all apps for the package listing.
+    private fun targetOf(get: (String) -> String?, cls: String): String = when (cls) {
+        ActionClass.LAUNCH -> get(Extras.PACKAGE)
+            ?: get(Extras.COMPONENT)?.substringBefore('/')?.takeIf { it.isNotEmpty() }
+            ?: "(intent)"
+        ActionClass.PACKAGES -> Permissions.TARGET_ANY
+        else -> MimicService.instance?.activeRoot()?.packageName?.toString() ?: "(screen)"
+    }
+
+    private fun targetLabel(target: String): String =
+        if (target == Permissions.TARGET_ANY) "any app" else target
+
     fun status(ctx: Context): JSONObject = JSONObject()
         .put("service_enabled", MimicService.isEnabled())
         .put("paired", TokenStore.isPaired(ctx))
@@ -54,6 +107,8 @@ object Commands {
         .put("http", AppState.http(ctx))
         .put("mcp", AppState.mcp(ctx))
         .put("bind", AppState.bindAddress(ctx))
+        .put("require_auth", AppState.requireAuth(ctx))
+        .put("require_approval", AppState.requireApproval(ctx))
         .put("port", Host.PORT)
 
     private inline fun withService(block: (MimicService) -> Result): Result {
@@ -69,6 +124,7 @@ object Commands {
         Cmd.CLICK -> click(service, get)
         Cmd.SET_TEXT -> setText(service, get)
         Cmd.GLOBAL -> performed(service.globalNav(get(Extras.NAV) ?: ""))
+        Cmd.WAIT -> waitFor(service, get)
         Cmd.SCREENSHOT -> screenshot(service, get)
         else -> fail("unknown command: $action")
     }
@@ -88,6 +144,39 @@ object Commands {
         // FIND defaults to a flat match list unless an explicit format is given.
         if (action == Cmd.FIND && get(Extras.FORMAT) == null) cfg = cfg.copy(format = "flat")
         return ok(NodeTree.render(root, cfg))
+    }
+
+    // poll the active window until a node matches the query, or the timeout. on
+    // success returns the matches (like find); on timeout, a clear failure.
+    private fun waitFor(service: MimicService, get: (String) -> String?): Result {
+        val query = get(Extras.QUERY)
+        if (query.isNullOrEmpty()) return fail("wait needs a query (text/id/class/desc)")
+        var cfg = ViewConfig.from(get)
+        if (get(Extras.FORMAT) == null) cfg = cfg.copy(format = "flat")
+        val timeoutMs = waitTimeoutMs(get)
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val root = service.activeRoot()
+            if (root != null && NodeTree.firstMatch(root, cfg) != null) return ok(NodeTree.render(root, cfg))
+            if (System.currentTimeMillis() >= deadline)
+                return fail("wait: \"$query\" not found within ${"%.1f".format(timeoutMs / 1000.0)}s")
+            Thread.sleep(Defaults.WAIT_POLL_MS)
+        }
+    }
+
+    private fun waitTimeoutMs(get: (String) -> String?): Long =
+        ((get(Extras.TIMEOUT)?.toDoubleOrNull() ?: Defaults.WAIT_TIMEOUT_S) * 1000).toLong()
+            .coerceIn(0L, Defaults.WAIT_MAX_MS)
+
+    // poll until the given package owns the active window, or the timeout.
+    private fun waitForeground(pkg: String, timeoutMs: Long): Boolean {
+        val service = MimicService.instance ?: return false
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (service.activeRoot()?.packageName?.toString() == pkg) return true
+            Thread.sleep(Defaults.WAIT_POLL_MS)
+        }
+        return service.activeRoot()?.packageName?.toString() == pkg
     }
 
     private fun click(service: MimicService, get: (String) -> String?): Result {
@@ -120,20 +209,54 @@ object Commands {
     // <queries> (launcher activities) are returned, so no broad-visibility
     // permission is needed; the component is ready to pass to launch.
     private fun packages(ctx: Context, get: (String) -> String?): Result {
-        val query = get(Extras.QUERY)?.lowercase()
+        val query = get(Extras.QUERY)?.trim()?.lowercase()?.ifEmpty { null }
+        val fuzzy = get(Extras.FUZZY).let { it == "true" || it == "1" }
         val pm = ctx.packageManager
         val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val rows = pm.queryIntentActivities(main, 0).mapNotNull { ri ->
+        val all = pm.queryIntentActivities(main, 0).mapNotNull { ri ->
             val ai = ri.activityInfo ?: return@mapNotNull null
-            val label = ri.loadLabel(pm).toString()
-            if (query != null && query !in ai.packageName.lowercase() && query !in label.lowercase()) null
-            else Triple(label, ai.packageName, "${ai.packageName}/${ai.name}")
-        }.sortedBy { it.first.lowercase() }
+            Triple(ri.loadLabel(pm).toString(), ai.packageName, "${ai.packageName}/${ai.name}")
+        }
+        val rows = when {
+            query == null -> all.sortedBy { it.first.lowercase() }
+            // approximate: rank by min edit distance to label words / package, keep
+            // close matches so a typo ("settngs") still finds "settings".
+            fuzzy -> all.map { it to score(query, it.first, it.second) }
+                .filter { it.second <= maxOf(2, query.length / 2) }
+                .sortedBy { it.second }
+                .map { it.first }
+            else -> all.filter { query in it.first.lowercase() || query in it.second.lowercase() }
+                .sortedBy { it.first.lowercase() }
+        }
         val arr = JSONArray()
         for ((label, pkg, component) in rows) {
             arr.put(JSONObject().put("package", pkg).put("label", label).put("component", component))
         }
         return ok(arr)
+    }
+
+    // distance of a query to an app: 0 if it is a substring of the label/package,
+    // else the smallest edit distance to any label word or the package's last segment.
+    private fun score(q: String, label: String, pkg: String): Int {
+        val l = label.lowercase()
+        val p = pkg.lowercase()
+        if (q in l || q in p) return 0
+        val candidates = l.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() } + p.substringAfterLast('.')
+        return candidates.minOfOrNull { editDistance(q, it) } ?: editDistance(q, l)
+    }
+
+    private fun editDistance(a: String, b: String): Int {
+        val prev = IntArray(b.length + 1) { it }
+        val cur = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            cur[0] = i
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+            }
+            System.arraycopy(cur, 0, prev, 0, cur.size)
+        }
+        return prev[b.length]
     }
 
     // start an activity by package (its launcher), explicit component, or
@@ -157,7 +280,15 @@ object Commands {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             (MimicService.instance ?: ctx).startActivity(intent)
-            ok(JSONObject().put("launched", true))
+            // --wait: block until the launched app owns the active window (only
+            // possible when the target package is known).
+            val wantWait = get(Extras.WAIT).let { it == "true" || it == "1" }
+            val targetPkg = pkg ?: component?.substringBefore('/')?.takeIf { it.isNotEmpty() }
+            if (wantWait && targetPkg != null) {
+                ok(JSONObject().put("launched", true).put("foreground", waitForeground(targetPkg, waitTimeoutMs(get))))
+            } else {
+                ok(JSONObject().put("launched", true))
+            }
         } catch (e: Exception) {
             fail("launch failed: ${e.message}")
         }

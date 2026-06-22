@@ -20,6 +20,8 @@ object AppState {
     private const val KEY_MCP = "mcp"
     private const val KEY_BOOT = "start_on_boot"
     private const val KEY_BIND = "bind_address"
+    private const val KEY_APPROVAL = "require_approval"
+    private const val KEY_AUTH = "require_auth"
 
     fun intents(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_INTENTS, false)
     fun http(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_HTTP, false)
@@ -38,6 +40,21 @@ object AppState {
 
     fun setStartOnBoot(ctx: Context, value: Boolean) =
         prefs(ctx).edit().putBoolean(KEY_BOOT, value).apply()
+
+    // when off, every authenticated request runs (the token is the only gate).
+    // when on, the per-token authorization rules apply (see Permissions).
+    fun requireApproval(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_APPROVAL, false)
+
+    fun setRequireApproval(ctx: Context, value: Boolean) =
+        prefs(ctx).edit().putBoolean(KEY_APPROVAL, value).apply()
+
+    // on by default: every command must carry a valid token. when off, the token
+    // gate is bypassed entirely (any local client may act) -- intended for trusted,
+    // isolated setups only.
+    fun requireAuth(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_AUTH, true)
+
+    fun setRequireAuth(ctx: Context, value: Boolean) =
+        prefs(ctx).edit().putBoolean(KEY_AUTH, value).apply()
 
     // the intents surface is gated at the component level: disabling the receiver
     // removes the intent endpoint entirely rather than relying on a runtime flag.

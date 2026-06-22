@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a full-screen scrim with a centered card; shown as an accessibility overlay
+     over the foreground app to ask for an action's authorization. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC000000"
+    android:padding="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:background="@color/bg"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/prompt_title"
+            android:textColor="@color/fg"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:id="@+id/prompt_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/accent"
+            android:textSize="16sp"
+            android:paddingBottom="16dp" />
+
+        <RadioGroup
+            android:id="@+id/prompt_scope"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/scope_once"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/scope_once"
+                android:textColor="@color/fg" />
+
+            <RadioButton
+                android:id="@+id/scope_this_app"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/scope_this_app"
+                android:textColor="@color/fg"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/scope_all"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/scope_all"
+                android:textColor="@color/fg" />
+
+        </RadioGroup>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:paddingTop="12dp">
+
+            <Button
+                android:id="@+id/prompt_deny"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/prompt_deny"
+                android:contentDescription="@string/prompt_deny_desc" />
+
+            <Button
+                android:id="@+id/prompt_allow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/prompt_allow"
+                android:contentDescription="@string/prompt_allow_desc"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</FrameLayout>

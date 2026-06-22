@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- optional: when granted, the action-approval prompt is drawn as an
+         application overlay (more robust); otherwise it falls back to an
+         accessibility overlay, which needs no permission. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- package visibility (android 11+, target sdk 30+): without this, other
          apps are invisible and `launch` cannot resolve them. declare that we
@@ -77,8 +81,10 @@
                 <action android:name="com.khimaros.mimic.action.CLICK" />
                 <action android:name="com.khimaros.mimic.action.SET_TEXT" />
                 <action android:name="com.khimaros.mimic.action.GLOBAL" />
+                <action android:name="com.khimaros.mimic.action.WAIT" />
                 <action android:name="com.khimaros.mimic.action.LAUNCH" />
                 <action android:name="com.khimaros.mimic.action.SCREENSHOT" />
+                <action android:name="com.khimaros.mimic.action.PACKAGES" />
                 <action android:name="com.khimaros.mimic.action.PAIR" />
                 <action android:name="com.khimaros.mimic.action.STATUS" />
             </intent-filter>

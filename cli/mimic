@@ -342,18 +342,53 @@ cmd_text() {
 
 cmd_global() { need_token; send GLOBAL nav "$1"; }
 
+# wait until a node matches the query (polls the active window server-side).
+cmd_wait() {
+    need_token
+    _query="${1:-}"; [ -n "$_query" ] || die "usage: mimic wait QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--timeout SECONDS] [--package P] [--filter F]"
+    shift
+    _by=; _match=; _timeout=; _pkg=; _filter=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --by) _by="$2"; shift 2 ;;
+            --match) _match="$2"; shift 2 ;;
+            --timeout) _timeout="$2"; shift 2 ;;
+            --package) _pkg="$2"; shift 2 ;;
+            --filter) _filter="$2"; shift 2 ;;
+            *) die "wait: unknown option $1" ;;
+        esac
+    done
+    set -- WAIT query "$_query"
+    [ -n "$_by" ]      && set -- "$@" by "$_by"
+    [ -n "$_match" ]   && set -- "$@" match "$_match"
+    [ -n "$_timeout" ] && set -- "$@" timeout "$_timeout"
+    [ -n "$_pkg" ]     && set -- "$@" package "$_pkg"
+    [ -n "$_filter" ]  && set -- "$@" filter "$_filter"
+    send "$@"
+}
+
 cmd_packages() {
     need_token
+    # capture args before rebuilding the positional params for send.
+    _q=; _fuzzy=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --fuzzy) _fuzzy=1; shift ;;
+            -*) die "packages: unknown option $1" ;;
+            *) _q="$1"; shift ;;
+        esac
+    done
     set -- PACKAGES
-    [ -n "${1:-}" ] && set -- "$@" query "$1"
+    [ -n "$_q" ] && set -- "$@" query "$_q"
+    [ -n "$_fuzzy" ] && set -- "$@" fuzzy true
     send "$@"
 }
 
 cmd_launch() {
     need_token
-    _pkg=; _component=; _action=; _uri=
+    _pkg=; _component=; _action=; _uri=; _wait=; _timeout=
     case "${1:-}" in
-        "") die "usage: mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] [--package PKG] | --uri URI" ;;
+        "") die "usage: mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] [--package PKG] | --uri URI [--wait] [--timeout SECONDS]" ;;
         --*) ;;
         *) _pkg="$1"; shift ;;
     esac
@@ -363,6 +398,8 @@ cmd_launch() {
             --action) _action="$2"; shift 2 ;;
             --uri) _uri="$2"; shift 2 ;;
             --package) _pkg="$2"; shift 2 ;;
+            --wait) _wait=1; shift ;;
+            --timeout) _timeout="$2"; shift 2 ;;
             *) die "launch: unknown option $1" ;;
         esac
     done
@@ -371,6 +408,8 @@ cmd_launch() {
     [ -n "$_component" ] && set -- "$@" component "$_component"
     [ -n "$_action" ]    && set -- "$@" action "$_action"
     [ -n "$_uri" ]       && set -- "$@" uri "$_uri"
+    [ -n "$_wait" ]      && set -- "$@" wait true
+    [ -n "$_timeout" ]   && set -- "$@" timeout "$_timeout"
     send "$@"
 }
 
@@ -441,8 +480,11 @@ interact:
   mimic text VALUE [--id ID | --text T | --class C | --desc D] [--match M]
                   (no target -> types into the currently focused field)
   mimic back | home | recents | notifications
-  mimic packages [QUERY]               list launchable apps (package, label, component)
+  mimic wait QUERY [--by text|id|class|desc] [--match M] [--timeout S] [--package P]
+                  (poll until a node matches; default timeout 10s, http for long waits)
+  mimic packages [QUERY] [--fuzzy]     list launchable apps (package, label, component)
   mimic launch PACKAGE | --component PKG/.ACT | --action ACTION [--uri URI] | --uri URI
+                  [--wait] [--timeout S]   (--wait blocks until the app is foreground)
   mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
                   (last resort; prefer the text tree. writes a /tmp file, prints the path)
 
@@ -480,6 +522,7 @@ case "$cmd" in
     home) cmd_global home ;;
     recents) cmd_global recents ;;
     notifications|notif) cmd_global notifications ;;
+    wait) cmd_wait "$@" ;;
     packages|apps) cmd_packages "$@" ;;
     launch) cmd_launch "$@" ;;
     screenshot|shot) cmd_screenshot "$@" ;;

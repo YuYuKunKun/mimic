@@ -5,6 +5,7 @@ interact (tap/swipe/global/set-text), the token gate, and parity across the
 intents, http, and mcp surfaces.
 """
 
+import json
 import time
 
 import adb
@@ -19,6 +20,8 @@ def test_http_status(token):
     assert b["data"]["service_enabled"] is True
     assert b["data"]["http"] is True
     assert b["data"]["bind"] == "127.0.0.1"  # loopback by default
+    assert b["data"]["require_auth"] is True  # token required by default
+    assert b["data"]["require_approval"] is False  # fine-grained off by default
 
 
 def test_http_healthz_unauthenticated(token):
@@ -128,6 +131,27 @@ def test_http_packages_query_filter(token):
     assert all("settings" in (e["package"] + e["label"]).lower() for e in b["data"])
 
 
+def test_http_packages_fuzzy(token):
+    # a typo still finds the app via edit-distance matching.
+    s, b = adb.http("POST", "/v1/packages", token, {"query": "settngs", "fuzzy": True})
+    assert s == 200 and b["ok"]
+    assert any("settings" in e["label"].lower() for e in b["data"]), b["data"]
+
+
+def test_cli_packages(token):
+    # exercises the real cli/mimic script (regression: it once sent query=PACKAGES).
+    rc, out = adb.cli(["packages"], token)
+    assert rc == 0, out
+    data = json.loads(out)["data"]
+    assert isinstance(data, list) and len(data) > 5
+    rc, out = adb.cli(["packages", "settings"], token)
+    data = json.loads(out)["data"]
+    assert data and all("settings" in (e["package"] + e["label"]).lower() for e in data)
+    rc, out = adb.cli(["packages", "settngs", "--fuzzy"], token)
+    data = json.loads(out)["data"]
+    assert any("settings" in e["label"].lower() for e in data), out
+
+
 def test_set_text_into_focused_field(token):
     # set-text with no target should land in whatever field has input focus.
     adb.shell("am", "start", "-a", "android.intent.action.INSERT", "-t", "vnd.android.cursor.dir/contact")
@@ -146,6 +170,42 @@ def test_set_text_into_focused_field(token):
     assert s == 200 and b["ok"] and len(b["data"]) >= 1, b
     adb.shell("input", "keyevent", "KEYCODE_BACK")
     adb.shell("input", "keyevent", "KEYCODE_BACK")
+
+
+# ---- wait + launch --wait ----
+
+def test_http_wait_found(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)  # our ui shows the bottom tabs
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/wait", token, {"query": "general", "by": "text", "timeout": 5}, timeout=10)
+    assert s == 200 and b["ok"] and isinstance(b["data"], list) and len(b["data"]) >= 1, b
+
+
+def test_http_wait_timeout(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    t0 = time.monotonic()
+    s, b = adb.http("POST", "/v1/wait", token, {"query": "zzznope999", "by": "text", "timeout": 2}, timeout=10)
+    assert s == 200 and b["ok"] is False and "wait" in (b.get("error") or "").lower(), b
+    assert time.monotonic() - t0 >= 1.5  # it actually polled for the timeout
+
+
+def test_http_launch_wait_foreground(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)  # foreground first (bal grace)
+    time.sleep(1.0)
+    s, b = adb.http("POST", "/v1/launch", token,
+                    {"package": "com.android.settings", "wait": True, "timeout": 10}, timeout=15)
+    assert s == 200 and b["ok"] and b["data"]["launched"] is True and b["data"]["foreground"] is True, b
+    adb.http("POST", "/v1/global", token, {"nav": "home"})
+
+
+def test_cli_wait(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    rc, out = adb.cli(["wait", "general", "--by", "text", "--timeout", "5"], token)
+    assert rc == 0, out
+    data = json.loads(out)["data"]
+    assert isinstance(data, list) and len(data) >= 1
 
 
 # ---- pairing and per-client tokens ----
@@ -221,7 +281,8 @@ def test_mcp_initialize(token):
 def test_mcp_tools_list(token):
     s, b = adb.mcp(token, "tools/list")
     names = [t["name"] for t in b["result"]["tools"]]
-    assert {"mimic_dump", "mimic_find", "mimic_tap", "mimic_status", "mimic_screenshot"} <= set(names)
+    assert {"mimic_dump", "mimic_find", "mimic_wait", "mimic_tap", "mimic_status",
+            "mimic_screenshot", "mimic_packages"} <= set(names)
 
 
 def test_mcp_screenshot_image_block(token):
@@ -290,6 +351,13 @@ def test_mcp_packages(token):
     assert "com.android.settings" in r["content"][0]["text"]
 
 
+def test_mcp_wait(token):
+    adb.shell("am", "start", "-n", adb.ACTIVITY)
+    time.sleep(1.0)
+    r = _mcp_call(token, "mimic_wait", {"query": "general", "by": "text", "timeout": 5})
+    assert r["isError"] is False and isinstance(r["content"][0]["text"], str)
+
+
 def test_mcp_unknown_tool_is_error(token):
     r = _mcp_call(token, "mimic_nope", {})
     assert r["isError"] is True and "unknown tool" in r["content"][0]["text"]
@@ -311,3 +379,27 @@ def test_intents_unauthorized(token):
 def test_intents_dump(token):
     resp = adb.broadcast("DUMP", token=token, format="tree")
     assert resp["ok"] and isinstance(resp["data"], dict)
+
+
+# ---- authorization (per-token approval) -- runs last; restores approval off ----
+# the suite stays non-interactive: tokens are set to allow-all so no on-device
+# prompt appears. the interactive prompt (block/allow/deny/remember/grant-revoke)
+# is verified by hand -- the service overlay is not visible to uiautomator.
+
+def test_approval_allow_all_mode_bypasses(approval_on, token):
+    # the session token is set to allow-all at setup, so even with approval on a
+    # gated command runs without an on-device prompt.
+    s, b = adb.http("POST", "/v1/packages", token, {})
+    assert s == 200 and b["ok"] and isinstance(b["data"], list)
+
+
+def test_auth_off_allows_no_token(token):
+    # require-authentication off: a gated command runs without any token.
+    adb.set_auth(False)
+    try:
+        s, b = adb.http("POST", "/v1/packages", "")  # no token
+        assert s == 200 and b["ok"] and isinstance(b["data"], list), b
+    finally:
+        adb.set_auth(True)
+    s, b = adb.http("POST", "/v1/packages", "")  # auth back on -> rejected
+    assert s == 401

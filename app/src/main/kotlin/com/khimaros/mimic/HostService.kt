@@ -99,18 +99,21 @@ class HostService : Service() {
         // pairing is unauthenticated by design: it is how a client without a token
         // obtains one, and it only succeeds while a gui-opened window is active.
         if (req.method == "POST" && req.path == "/pair") return pair(req, out)
-        if (!TokenStore.verify(this, req.token())) {
-            return respond(out, "401 Unauthorized", error("unauthorized: bad or missing token"))
-        }
+        // when auth is required, resolve the token to a record; when it is off, the
+        // token gate is bypassed and the request runs anonymously (record = null).
+        val record = if (AppState.requireAuth(this)) {
+            TokenStore.find(this, req.token())
+                ?: return respond(out, "401 Unauthorized", error("unauthorized: bad or missing token"))
+        } else null
         when {
             req.path == "/mcp" && req.method == "POST" -> {
                 if (!AppState.mcp(this)) return respond(out, "403 Forbidden", error("mcp surface disabled"))
-                val (status, body) = Mcp.handle(this, req.body)
+                val (status, body) = Mcp.handle(this, req.body, record)
                 respond(out, status, body)
             }
             req.path.startsWith("/v1/") -> {
                 if (!AppState.http(this)) return respond(out, "403 Forbidden", error("http surface disabled"))
-                rest(req, out)
+                rest(req, out, record)
             }
             else -> respond(out, "404 Not Found", error("no such route: ${req.path}"))
         }
@@ -119,11 +122,11 @@ class HostService : Service() {
     // /v1/status (GET) or /v1/<cmd> (POST with a json body of arguments). binary
     // payloads (screenshot) are returned as raw image bytes; everything else as
     // the json envelope.
-    private fun rest(req: Request, out: OutputStream) {
+    private fun rest(req: Request, out: OutputStream, record: TokenStore.Record?) {
         val cmd = req.path.removePrefix("/v1/").uppercase()
         val args = if (req.body.isNotBlank()) JSONObject(req.body) else JSONObject()
         val get = { k: String -> req.query[k] ?: if (args.has(k) && !args.isNull(k)) args.get(k).toString() else null }
-        val result = Commands.run(this, cmd, get)
+        val result = Commands.runGuarded(this, cmd, get, record, Defaults.PROMPT_TIMEOUT_HTTP_MS)
         val data = result.data
         if (result.ok && data is ByteArray) {
             respondBytes(out, "200 OK", data, imageMime(get(Extras.FORMAT)))

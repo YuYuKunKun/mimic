@@ -35,6 +35,10 @@ that local server require.
   content-description, with exact, contains, or regex matching.
 - R1.5 support output shaping: tree vs flat vs compact form, and selection of
   which fields are included.
+- R1.6 support waiting for a node matching a query to appear in the active window,
+  polling server-side with a configurable timeout and a sensible default; return
+  the matches when found, or a clear timeout failure. (preferable to a client-side
+  sleep.) the timeout is capped under the broadcast window on the intents surface.
 
 ## R2 interact
 
@@ -47,7 +51,9 @@ that local server require.
   coordinates, text, or resource-id. no reliance on ephemeral node ids that go
   stale when the screen changes.
 - R2.6 launch an app or activity by package, explicit component, or action/uri.
-  this is subject to android background-activity-launch rules.
+  this is subject to android background-activity-launch rules. optionally block
+  until the launched app owns the active window, reporting whether it reached the
+  foreground within the timeout.
 - R2.7 capture a screenshot (png/jpeg, optional downscale) via the accessibility
   framework. http returns raw image bytes, mcp an image content block, intents
   base64; the cli writes it to a file. it is a last resort relative to the tree,
@@ -136,3 +142,29 @@ that local server require.
   address on demand, so the common path needs no manual selection.
 - R7.5 the bind interface is chosen in the ui from loopback, each detected lan
   address, or all interfaces; a non-loopback choice is flagged as network-exposed.
+
+## R8 authorization (fine-grained, per-token)
+
+- R8.1 an optional global "require approval" mode, off by default (the token is
+  then the only gate). when on, every command is authorized per token before it
+  runs.
+- R8.2 authorization is keyed by (token, action class, target app). classes:
+  read (dump/find), interact (tap/long-press/swipe/click/global), type (set-text),
+  launch, screenshot, packages; status and pair are exempt. the target is the
+  launched app for launch, the foreground app for reads/input/screenshot, and all
+  apps for the package listing.
+- R8.3 each token has a mode: ask (prompt on an unknown class/app) or allow-all
+  (never prompt). paired clients default to ask; legacy tokens to allow-all, since
+  a headless client cannot answer a prompt.
+- R8.4 on an unknown (class, app) the user is prompted over the foreground app
+  (allow or deny, with remember scope: once, this app, or all apps). the request
+  blocks until the answer or a per-surface timeout (the localhost surfaces wait
+  long enough for a human; intents is capped under the broadcast window), then
+  returns the real result or, on timeout, a clear permission_required for retry.
+- R8.5 the prompt is drawn as an accessibility overlay (needs no extra
+  permission); if the optional "draw over other apps" permission is granted, a
+  more robust application overlay is used instead.
+- R8.6 grants are stored per token and revocable individually in the ui (and drop
+  with the token when it is revoked). the ui lists each client's grants and mode.
+  remembering and revoking grants happen at the device (prompt or ui), never from
+  a remote client.

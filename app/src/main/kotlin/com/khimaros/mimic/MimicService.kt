@@ -8,17 +8,29 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.Display
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
+import android.widget.RadioGroup
+import android.widget.TextView
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 
 // the live accessibility connection. a process-wide singleton so CommandReceiver
 // (same process) can call straight into it. holds no command state -- every view
@@ -51,6 +63,73 @@ class MimicService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
+
+    // ---- authorization prompt ----
+
+    data class PromptOutcome(val allowed: Boolean, val scope: Permissions.Scope)
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val promptLock = ReentrantLock()
+    @Volatile private var overlayView: View? = null
+
+    // show an allow/deny overlay over the foreground app and block (off the main
+    // thread) until the user answers or the timeout elapses. one prompt at a time;
+    // null means no answer in time. uses an application overlay when the optional
+    // "draw over other apps" permission is granted, else an accessibility overlay.
+    fun promptPermission(label: String, id: String, cls: String, target: String, timeoutMs: Long): PromptOutcome? {
+        promptLock.lock()
+        try {
+            val latch = CountDownLatch(1)
+            val result = AtomicReference<PromptOutcome?>(null)
+            mainHandler.post { showPrompt(label, id, cls, target) { result.set(it); latch.countDown() } }
+            val answered = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            mainHandler.post { removePrompt() }
+            return if (answered) result.get() else null
+        } finally {
+            promptLock.unlock()
+        }
+    }
+
+    private fun showPrompt(label: String, id: String, cls: String, target: String, onResult: (PromptOutcome) -> Unit) {
+        removePrompt()
+        val wm = getSystemService(WindowManager::class.java)
+            ?: return onResult(PromptOutcome(false, Permissions.Scope.ONCE))
+        val view = LayoutInflater.from(this).inflate(R.layout.permission_prompt, null)
+        val targetLabel = if (target == Permissions.TARGET_ANY) "any app" else target
+        view.findViewById<TextView>(R.id.prompt_text).text =
+            getString(R.string.prompt_fmt, label, id, ActionClass.verb(cls), targetLabel)
+        val scopeGroup = view.findViewById<RadioGroup>(R.id.prompt_scope)
+        fun scope(): Permissions.Scope = when (scopeGroup.checkedRadioButtonId) {
+            R.id.scope_once -> Permissions.Scope.ONCE
+            R.id.scope_all -> Permissions.Scope.ALL_APPS
+            else -> Permissions.Scope.THIS_APP
+        }
+        view.findViewById<Button>(R.id.prompt_allow).setOnClickListener { removePrompt(); onResult(PromptOutcome(true, scope())) }
+        view.findViewById<Button>(R.id.prompt_deny).setOnClickListener { removePrompt(); onResult(PromptOutcome(false, scope())) }
+        // an application overlay is more robust (and uiautomator can drive it), but
+        // needs the optional permission; fall back to the no-permission a11y overlay.
+        val type = if (Settings.canDrawOverlays(this)) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            type,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.CENTER }
+        try {
+            wm.addView(view, lp)
+            overlayView = view
+        } catch (_: Exception) {
+            onResult(PromptOutcome(false, Permissions.Scope.ONCE))
+        }
+    }
+
+    private fun removePrompt() {
+        val v = overlayView ?: return
+        overlayView = null
+        try { getSystemService(WindowManager::class.java)?.removeView(v) } catch (_: Exception) {}
+    }
 
     // ---- view ----
 

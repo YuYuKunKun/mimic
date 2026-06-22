@@ -88,6 +88,10 @@ view (filtering/query run on-device):
   mimic find QUERY [--by text|id|class|desc]
                   [--match exact|contains|regex]
                   [+ any dump option]
+  mimic wait QUERY [--by ...] [--match ...] [--timeout SECONDS] [--package P]
+                  poll the active window until a node matches; returns the matches,
+                  or fails on timeout (default 10s). prefer this over sleeping.
+                  long waits need the http surface (intents is capped ~8s).
 
 interact (stateless -- targets re-resolve every call):
   mimic tap        X Y [--duration MS]
@@ -99,11 +103,13 @@ interact (stateless -- targets re-resolve every call):
   mimic back | home | recents | notifications
 
 discover and launch apps:
-  mimic packages [QUERY]                list launchable apps as {package,label,component}
-  mimic launch PACKAGE                  launch an app by package
+  mimic packages [QUERY] [--fuzzy]      list launchable apps as {package,label,component};
+                                        --fuzzy tolerates typos (edit distance)
+  mimic launch PACKAGE [--wait]         launch an app; --wait blocks until it is foreground
   mimic launch --component PKG/.ACT     launch an explicit activity (e.g. from packages)
   mimic launch --action ACTION [--uri URI] [--package PKG]
   mimic launch --uri URI                open a uri (ACTION_VIEW)
+                  (launch --wait [--timeout S] returns {"launched":true,"foreground":bool})
 
 screenshot (LAST RESORT -- see below):
   mimic screenshot [PATH] [--format png|jpeg] [--quality 1-100] [--scale 0-1]
@@ -180,6 +186,11 @@ app's **http** surface and the cli will use it.
 - `accessibility service not enabled`: enable it in accessibility settings.
 - `no node matched query`: widen the query or `--match contains`; confirm with
   `mimic find`.
+- `permission_required`: the device has "require approval" on and a prompt is
+  waiting on screen. the command blocks until the user answers; if it times out
+  first you get this -- the user approves the prompt (optionally "remember"), then
+  run the command again. `permission_denied` means the user (or a saved rule)
+  rejected it; do not retry blindly.
 
 ## mcp client config
 
@@ -208,9 +219,10 @@ most clients take a json entry; the exact keys vary by client, but the shape is:
 if the client runs on a different host than the phone, forward the port with
 `adb forward tcp:8473 tcp:8473`, or set the bind interface to a lan address /
 0.0.0.0 in the app and use the device ip (the app shows and copies the address).
-the tools are `mimic_dump`, `mimic_find`, `mimic_tap`, `mimic_long_press`,
-`mimic_swipe`, `mimic_click`, `mimic_set_text`, `mimic_global`, `mimic_packages`,
-`mimic_launch`, `mimic_status`; their arguments mirror the cli flags. action tools
-answer with a plain success message and an `isError` flag, not a raw json blob.
+the tools are `mimic_dump`, `mimic_find`, `mimic_wait`, `mimic_tap`,
+`mimic_long_press`, `mimic_swipe`, `mimic_click`, `mimic_set_text`, `mimic_global`,
+`mimic_packages`, `mimic_launch`, `mimic_status`; their arguments mirror the cli
+flags. action tools answer with a plain success message and an `isError` flag, not
+a raw json blob.
 
 the rest api and raw intent protocol are documented in [DESIGN.md](DESIGN.md).

@@ -5,10 +5,12 @@ toggle surfaces through the ui, then exercise the intents, http, and mcp surface
 """
 
 import json
+import os
 import pathlib
 import re
 import shlex
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +25,7 @@ PORT = 8473
 BASE = f"http://127.0.0.1:{PORT}"
 
 APK = pathlib.Path(__file__).resolve().parents[1] / "app/build/outputs/apk/debug/app-debug.apk"
+CLI = pathlib.Path(__file__).resolve().parents[1] / "cli/mimic"
 
 _DATA_RE = re.compile(r'data="([^"]*)"')
 _CODE_RE = re.compile(r"(\d{6})")
@@ -49,6 +52,9 @@ def device_available():
 
 def install():
     adb("install", "-r", "-g", str(APK))
+    # grant the optional draw-over permission so the approval prompt uses the
+    # application overlay, which uiautomator can dump and tap.
+    shell("appops", "set", PKG, "SYSTEM_ALERT_WINDOW", "allow")
 
 
 def enable_accessibility():
@@ -76,6 +82,20 @@ def ui():
     return ET.fromstring(adb("shell", "cat", "/sdcard/mimic_e2e.xml").stdout)
 
 
+def select_tab(name):
+    """tap a bottom tab (general|clients|surfaces|permissions). the tab buttons are
+    the only Buttons whose text exactly equals the tab name, so match precisely."""
+    launch()
+    root = ui()
+    target = None
+    for n in root.iter("node"):
+        if (n.get("class") or "").endswith("Button") and (n.get("text") or "").strip().lower() == name.lower():
+            target = n
+    assert target is not None, f"tab not found: {name}"
+    tap_node(target)
+    time.sleep(0.4)
+
+
 def node_with(root, needle):
     # case-insensitive: platform buttons render their text upper-cased.
     needle = needle.lower()
@@ -97,16 +117,48 @@ def tap_node(node):
     time.sleep(0.6)
 
 
+def find_scrolling(needle):
+    """scroll the screen (top first) until a node matching needle is on-screen."""
+    w, h = screen_size()
+    for _ in range(5):  # to the top
+        shell("input", "swipe", str(w // 2), str(int(h * 0.3)), str(w // 2), str(int(h * 0.85)), "150")
+        time.sleep(0.15)
+    for _ in range(10):
+        node = node_with(ui(), needle)
+        if node is not None:
+            t, b = (lambda v: (v[1], v[3]))(list(map(int, re.findall(r"\d+", node.get("bounds")))))
+            if 0 <= (t + b) // 2 <= h - 120:
+                return node
+        shell("input", "swipe", str(w // 2), str(int(h * 0.7)), str(w // 2), str(int(h * 0.3)), "150")
+        time.sleep(0.3)
+    return None
+
+
 def ensure_switch(label, desired=True):
-    node = node_with(ui(), label)
+    node = find_scrolling(label)
     assert node is not None, f"switch not found: {label}"
     if (node.get("checked") == "true") != desired:
         tap_node(node)
 
 
+def scroll_top():
+    """scroll the onboarding screen to the top so top widgets are in the dump."""
+    w, h = screen_size()
+    for _ in range(3):
+        shell("input", "swipe", str(w // 2), str(int(h * 0.3)), str(w // 2), str(int(h * 0.85)), "200")
+        time.sleep(0.2)
+
+
 def reveal_token():
-    """reveal a legacy token in the ui (the manual-config path) and return it."""
-    launch()
+    """reveal a legacy token in the ui (the manual-config path) and return it.
+    first clears any clients/grants accumulated across prior runs (data survives
+    a -r reinstall) so the onboarding screen stays short and predictable."""
+    select_tab("clients")
+    clear = find_scrolling("revoke all")
+    if clear is not None:
+        tap_node(clear)
+        time.sleep(0.4)
+    scroll_top()
     tap_node(node_with(ui(), "reveal legacy token"))
     # the creds field uniquely contains "x-mimic-token"; the token is the only
     # long base64url run in it.
@@ -114,12 +166,25 @@ def reveal_token():
     text = creds.get("text") if creds is not None else ""
     m = _TOKEN_RE.search(text or "")
     assert m, f"token not found in ui: {text!r}"
+    # tokens default to 'ask'; flip this (now lone) client to allow-all so the
+    # suite never triggers an on-device prompt that would need a manual tap.
+    _make_lone_client_allow_all()
     return m.group(1)
+
+
+def _make_lone_client_allow_all():
+    for _ in range(3):
+        btn = find_scrolling("mode:")  # the single client's mode button
+        if btn is None or "allow_all" in (btn.get("text") or "").lower():
+            return
+        tap_node(btn)
+        time.sleep(0.3)
 
 
 def start_pairing():
     """open a pairing window in the ui and return the one-time code."""
-    launch()
+    select_tab("clients")
+    scroll_top()
     tap_node(node_with(ui(), "start pairing"))
     creds = node_with(ui(), "pairing code")
     text = creds.get("text") if creds is not None else ""
@@ -139,13 +204,23 @@ def screen_size():
     return (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
 
 
+def set_approval(value):
+    """toggle the 'enable fine-grained permissions' switch (general tab)."""
+    select_tab("general")
+    ensure_switch("fine-grained permissions", value)
+
+
+def set_auth(value):
+    """toggle the 'require authentication' switch (general tab)."""
+    select_tab("general")
+    ensure_switch("require authentication", value)
+
+
 def revoke_in_ui(token_id):
     """tap the revoke button for a given client id (gui-only token management).
-    http pairing does not touch the ui, so bounce through home to force an
-    onResume that rebuilds the list, then scroll the row into view."""
-    shell("input", "keyevent", "KEYCODE_HOME")
-    time.sleep(0.3)
-    launch()
+    the clients list updates live when a client pairs over http, so just open the
+    clients tab and scroll the row into view."""
+    select_tab("clients")
     needle = f"revoke {token_id}"
     w, h = screen_size()
     for _ in range(8):
@@ -175,14 +250,24 @@ def broadcast(action, **extras):
     return json.loads(base64.b64decode(m.group(1)).decode())
 
 
-def http(method, path, token, body=None):
+def cli(args, token, timeout=30):
+    """run the real cli/mimic shell script over the http surface and return
+    (returncode, stdout). exercises the script itself, not just the surfaces."""
+    home = tempfile.mkdtemp()
+    (pathlib.Path(home) / "token").write_text(token)
+    env = {**os.environ, "MIMIC_HOME": home, "MIMIC_TRANSPORT": "http", "MIMIC_HOST": f"127.0.0.1:{PORT}"}
+    p = subprocess.run(["sh", str(CLI), *args], capture_output=True, text=True, env=env, timeout=timeout)
+    return p.returncode, p.stdout
+
+
+def http(method, path, token, body=None, timeout=5):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
     req.add_header("x-mimic-token", token)
     if data:
         req.add_header("content-type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read().decode())

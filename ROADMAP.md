@@ -80,6 +80,46 @@
       unknown tool) plus focused-field set-text and bind-default status
 - [x] 33/33 e2e pass on a real pixel 8 pro
 
+## milestone 6: per-token fine-grained authorization (done; verified on device)
+
+- [x] global "require approval" toggle (default off; current behavior preserved)
+- [x] per-token mode (ask | allow-all); paired clients default to ask, legacy to
+      allow-all (headless clients cannot answer prompts)
+- [x] action classes (medium): read, interact, type, launch, screenshot, packages;
+      status/pair are exempt
+- [x] target app resolved per action: foreground package for read/interact/type/
+      screenshot, the launched package for launch, all for packages
+- [x] allow/deny prompt over the active app via an accessibility overlay (no extra
+      permission), with remember scope: once | this app | all apps; upgrades to an
+      application overlay when the optional draw-over permission is granted
+- [x] hybrid wait: block up to a per-surface limit (http/mcp 120s so a human can
+      answer in-call, intents ~8s under the broadcast window), else return a clear
+      permission_required for the client to retry
+- [x] grants stored per token; resolution prefers an exact (class, app) rule over
+      a (class, *) wildcard, else falls back to the token mode
+- [x] ui lists each client's grants and mode; revoke a single grant or change mode
+- [x] `packages` gains a `--fuzzy` (edit-distance) flag; fixed a cli regression
+      that sent query=PACKAGES (the cli script now has e2e coverage)
+- [x] docs updated (requirements R8, design, readme, skill) + python e2e (allow-all
+      bypass, ask blocks then times out). the interactive allow/deny/remember and
+      grant-revoke ui are verified by hand: the service overlay is not visible to
+      uiautomator, so it cannot be driven in e2e.
+
+## milestone 7: tabbed ui, wait, launch --wait
+
+- [ ] split the onboarding screen into bottom tabs (general: accessibility +
+      draw-over status + require-approval + boot; clients: pairing + per-client
+      list with grants; surfaces: intents/http/mcp + bind) -- plain framework
+      widgets, no androidx/material
+- [ ] `wait QUERY` polls the active window until a node matches, with a
+      configurable timeout (default 10s) and a clear timeout failure; over cli,
+      mcp, and intents (capped under the broadcast window)
+- [ ] `launch --wait` blocks until the launched app owns the active window,
+      reporting `foreground`
+- [ ] docs updated (requirements R1.6/R2.6, readme, skill) + python e2e (wait
+      found/timeout, launch --wait foreground, cli + mcp wait); harness is
+      tab-aware
+
 ## backlog
 
 - mcp sse / streaming responses and session ids (currently request/response only).

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">mimic</string>
+    <string name="tab_general">general</string>
+    <string name="tab_clients">clients</string>
+    <string name="tab_surfaces">surfaces</string>
     <string name="intro">expose this device\'s screen to local automation. enable the service, pair a client (or reveal a token), then turn on the surfaces you want.</string>
     <string name="service_description">exposes window viewing, interaction, and screen capture to local automation via intents and a localhost server. no off-device network, no other data.</string>
 
@@ -14,7 +17,7 @@
     <string name="legacy_token">reveal legacy token</string>
     <string name="clear_paired">revoke all</string>
     <string name="cleared">all tokens revoked. every client is now rejected; start pairing or reveal a token to add one.</string>
-    <string name="code_fmt">pairing code (copied; valid %1$d min, one client):\n\n    %2$s\n\non the client run:  mimic pair %2$s</string>
+    <string name="code_fmt">pairing code (copied; expires in %1$ds):\n\n    %2$s\n\non the client run:  mimic pair %2$s</string>
     <string name="legacy_fmt">legacy token (copied; header x-mimic-token):\n\n%1$s</string>
 
     <string name="clients_title">paired clients</string>
@@ -28,12 +31,31 @@
 
     <string name="surfaces_title">command surfaces</string>
     <string name="sw_intents">intents (broadcast receiver)</string>
-    <string name="sw_http">local http api (port %1$d, path /v1)</string>
-    <string name="sw_mcp">mcp server (port %1$d, path /mcp)</string>
+    <string name="sw_http">local http api: %1$s/v1</string>
+    <string name="sw_mcp">mcp server: %1$s/mcp</string>
 
     <string name="bind_title">bind interface (http/mcp)</string>
-    <string name="address_fmt">address: %1$s:%2$d</string>
+    <string name="address_fmt">address: http://%1$s:%2$d</string>
     <string name="lan_warning">reachable on your network; only the token protects it.</string>
 
     <string name="boot">restart surfaces on boot</string>
+
+    <string name="auth">require authentication</string>
+    <string name="approval">enable fine-grained permissions</string>
+    <string name="overlay_state">draw over apps: %1$s</string>
+    <string name="overlay_perm">grant draw over apps</string>
+    <string name="prompt_title">mimic: allow this action?</string>
+    <string name="prompt_fmt">%1$s (%2$s) wants to %3$s %4$s.</string>
+    <string name="scope_once">just this once</string>
+    <string name="scope_this_app">remember for this app</string>
+    <string name="scope_all">remember for all apps</string>
+    <string name="prompt_allow">allow</string>
+    <string name="prompt_deny">deny</string>
+    <string name="prompt_allow_desc">mimic allow action</string>
+    <string name="prompt_deny_desc">mimic deny action</string>
+
+    <string name="mode_fmt">mode: %1$s</string>
+    <string name="mode_desc">mode %1$s</string>
+    <string name="grant_row_fmt">%1$s %2$s %3$s</string>
+    <string name="no_grants">no grants yet</string>
 </resources>

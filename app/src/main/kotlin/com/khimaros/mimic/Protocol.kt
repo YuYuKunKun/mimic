@@ -16,11 +16,48 @@ object Cmd {
     const val CLICK = "CLICK"
     const val SET_TEXT = "SET_TEXT"
     const val GLOBAL = "GLOBAL"
+    const val WAIT = "WAIT"
     const val LAUNCH = "LAUNCH"
     const val SCREENSHOT = "SCREENSHOT"
     const val STATUS = "STATUS"
     const val PACKAGES = "PACKAGES"
     const val PAIR = "PAIR"
+}
+
+// the authorization class of each command. medium granularity: typing and screen
+// capture are split from generic input because they are more sensitive. status and
+// pair are exempt (no class) -- a client needs them to bootstrap and check state.
+object ActionClass {
+    const val READ = "read"
+    const val INTERACT = "interact"
+    const val TYPE = "type"
+    const val LAUNCH = "launch"
+    const val SCREENSHOT = "screenshot"
+    const val PACKAGES = "packages"
+
+    private val MAP = mapOf(
+        Cmd.DUMP to READ, Cmd.FIND to READ, Cmd.WAIT to READ,
+        Cmd.TAP to INTERACT, Cmd.LONG_PRESS to INTERACT, Cmd.SWIPE to INTERACT,
+        Cmd.CLICK to INTERACT, Cmd.GLOBAL to INTERACT,
+        Cmd.SET_TEXT to TYPE,
+        Cmd.LAUNCH to LAUNCH,
+        Cmd.SCREENSHOT to SCREENSHOT,
+        Cmd.PACKAGES to PACKAGES,
+    )
+
+    // null means the command is exempt from authorization.
+    fun of(cmd: String): String? = MAP[cmd]
+
+    // a human verb for the prompt ("<client> wants to <verb> <app>").
+    fun verb(cls: String): String = when (cls) {
+        READ -> "read the screen of"
+        INTERACT -> "control"
+        TYPE -> "type into"
+        LAUNCH -> "launch"
+        SCREENSHOT -> "screenshot"
+        PACKAGES -> "list installed apps"
+        else -> cls
+    }
 }
 
 object Actions {
@@ -68,6 +105,10 @@ object Extras {
     const val QUERY = "query"
     const val MATCH = "match"          // exact | contains | regex
 
+    // wait (and launch --wait): poll until present / foreground
+    const val TIMEOUT = "timeout"      // seconds (float)
+    const val WAIT = "wait"            // launch: block until the app is foreground
+
     // gestures
     const val X = "x"
     const val Y = "y"
@@ -82,6 +123,9 @@ object Extras {
     const val LABEL = "label"          // PAIR: optional client label (e.g. hostname)
     const val ID = "id"                // a token's short handle (revoke/identify)
     const val KIND = "kind"            // a token's kind: paired | legacy
+
+    // PACKAGES
+    const val FUZZY = "fuzzy"           // approximate (edit-distance) match
 
     // LAUNCH: at least one of these
     const val COMPONENT = "component"  // "pkg/.Activity"
@@ -105,6 +149,15 @@ object Defaults {
     // cannot hang the ordered broadcast and stall `am broadcast`.
     const val GESTURE_TIMEOUT_MS = 8_000L
     const val SCREENSHOT_TIMEOUT_MS = 5_000L
+
+    // wait / launch --wait: poll the active window until a match (or the app comes
+    // to the foreground), or the timeout. capped so a long wait cannot exceed the
+    // intents broadcast window (the receiver clamps to WAIT_INTENTS_MAX_S); the
+    // localhost surfaces allow up to WAIT_MAX_MS.
+    const val WAIT_TIMEOUT_S = 10.0
+    const val WAIT_POLL_MS = 300L
+    const val WAIT_MAX_MS = 60_000L
+    const val WAIT_INTENTS_MAX_S = 8.0
     const val SCREENSHOT_QUALITY = 90
     const val SCREENSHOT_FORMAT = "png"
 
@@ -118,6 +171,17 @@ object Defaults {
     // a token's kind, recorded for display and provenance.
     const val KIND_PAIRED = "paired"   // minted by redeeming a one-time code
     const val KIND_LEGACY = "legacy"   // minted in the gui for manual config
+
+    // authorization: per-token mode and how long a request waits for an approval
+    // prompt before giving up (kept under the intents broadcast window so `am`
+    // does not anr; longer for the localhost surfaces a client holds open).
+    const val MODE_ASK = "ask"             // prompt on unknown (class, app)
+    const val MODE_ALLOW_ALL = "allow_all" // never prompt (headless clients)
+    // the localhost surfaces hold the request open long enough for a human to
+    // answer the prompt, so the one call returns the real allow/deny result.
+    // intents is capped under the ~10s broadcast window to avoid an anr.
+    const val PROMPT_TIMEOUT_HTTP_MS = 120_000L
+    const val PROMPT_TIMEOUT_INTENTS_MS = 8_000L
 }
 
 // the full set of serializable node attributes; the caller may request a subset

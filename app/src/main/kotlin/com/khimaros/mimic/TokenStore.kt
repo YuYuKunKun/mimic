@@ -27,13 +27,15 @@ object TokenStore {
     private val rng = SecureRandom()
 
     // one record per issued token. `token` is the secret; `id` is a short, non-
-    // secret handle used to display and revoke it.
+    // secret handle used to display and revoke it. `mode` is the authorization
+    // default when no specific grant matches (see Permissions).
     data class Record(
         val token: String,
         val id: String,
         val label: String,
         val kind: String,
         val created: Long,
+        val mode: String,
     )
 
     private data class Pairing(val code: String, val expiresAt: Long, var attempts: Int)
@@ -58,6 +60,13 @@ object TokenStore {
     fun pairingActive(nowMs: Long): Boolean {
         val p = pending ?: return false
         return nowMs <= p.expiresAt && p.attempts > 0
+    }
+
+    // milliseconds left on the open pairing window (0 once it is used or expired).
+    fun pairingRemainingMs(nowMs: Long): Long {
+        val p = pending ?: return 0
+        if (p.attempts <= 0) return 0
+        return (p.expiresAt - nowMs).coerceAtLeast(0)
     }
 
     // open a pairing window and return its one-time code. no token is created yet;
@@ -97,15 +106,27 @@ object TokenStore {
     }
 
     // constant-time match against every stored token (no early exit reveals which
-    // one matched). an empty or unknown candidate is rejected.
-    fun verify(ctx: Context, candidate: String?): Boolean {
-        if (candidate.isNullOrEmpty()) return false
+    // one matched). returns the matching record (for authorization), or null.
+    fun find(ctx: Context, candidate: String?): Record? {
+        if (candidate.isNullOrEmpty()) return null
         val cand = candidate.toByteArray(Charsets.UTF_8)
-        var match = false
+        var match: Record? = null
         for (r in load(ctx)) {
-            if (MessageDigest.isEqual(r.token.toByteArray(Charsets.UTF_8), cand)) match = true
+            if (MessageDigest.isEqual(r.token.toByteArray(Charsets.UTF_8), cand)) match = r
         }
         return match
+    }
+
+    fun verify(ctx: Context, candidate: String?): Boolean = find(ctx, candidate) != null
+
+    // change a token's authorization mode (gui only).
+    fun setMode(ctx: Context, id: String, mode: String): Boolean {
+        val records = load(ctx).toMutableList()
+        val i = records.indexOfFirst { it.id == id }
+        if (i < 0) return false
+        records[i] = records[i].copy(mode = mode)
+        save(ctx, records)
+        return true
     }
 
     private fun mint(ctx: Context, kind: String, label: String?): Record {
@@ -113,7 +134,9 @@ object TokenStore {
         val token = Base64.encodeToString(ByteArray(Defaults.TOKEN_BYTES).also { rng.nextBytes(it) }, B64)
         var id: String
         do { id = hex(ByteArray(Defaults.TOKEN_ID_BYTES).also { rng.nextBytes(it) }) } while (records.any { it.id == id })
-        val rec = Record(token, id, label?.trim()?.ifEmpty { null } ?: "client", kind, System.currentTimeMillis())
+        // every token defaults to ask; set a token to allow-all in the ui for a
+        // headless client that cannot answer a prompt.
+        val rec = Record(token, id, label?.trim()?.ifEmpty { null } ?: "client", kind, System.currentTimeMillis(), Defaults.MODE_ASK)
         records.add(rec)
         save(ctx, records)
         return rec
@@ -131,6 +154,7 @@ object TokenStore {
                     o.optString("label", "client"),
                     o.optString("kind", Defaults.KIND_PAIRED),
                     o.optLong("created", 0),
+                    o.optString("mode", Defaults.MODE_ASK),
                 )
             }
         } catch (_: Exception) {
@@ -142,8 +166,8 @@ object TokenStore {
         val arr = JSONArray()
         for (r in records) {
             arr.put(
-                JSONObject().put("t", r.token).put("id", r.id)
-                    .put("label", r.label).put("kind", r.kind).put("created", r.created)
+                JSONObject().put("t", r.token).put("id", r.id).put("label", r.label)
+                    .put("kind", r.kind).put("created", r.created).put("mode", r.mode)
             )
         }
         prefs(ctx).edit().putString(KEY_TOKENS, arr.toString()).apply()
