@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">mimic</string>
+    <string name="tab_general">通用</string>
+    <string name="tab_clients">客户端</string>
+    <string name="tab_surfaces">通道</string>
+    <string name="intro">把本机屏幕开放给本地自动化。先启用服务，再配对客户端（或生成令牌），然后打开你要用的通道。</string>
+    <string name="service_description">通过 intent 与本机回环服务器，向本地自动化提供窗口查看、界面操作和屏幕截图能力。不访问设备外网络，也不采集其他数据。</string>
+
+    <string name="service_state">无障碍服务：%1$s</string>
+    <string name="enabled">已启用</string>
+    <string name="disabled">未启用</string>
+    <string name="open_settings">打开无障碍设置</string>
+
+    <string name="creds_title">配对与令牌</string>
+    <string name="start_pairing">开始配对</string>
+    <string name="legacy_token">显示旧版令牌</string>
+    <string name="clear_paired">全部吊销</string>
+    <string name="cleared">已吊销全部令牌，所有客户端都会被拒绝。重新开始配对或生成令牌即可再次接入。</string>
+    <string name="code_fmt">配对码（已复制，%1$d 秒后失效）：\n\n    %2$s\n\n在客户端执行：  mimic pair %2$s</string>
+    <string name="legacy_fmt">旧版令牌（已复制，请求头 x-mimic-token）：\n\n%1$s</string>
+
+    <string name="clients_title">已配对的客户端</string>
+    <string name="no_clients">还没有客户端。开始配对，或生成旧版令牌手动配置。</string>
+    <string name="client_row_fmt">%1$s  -  %2$s  (%3$s)</string>
+    <string name="revoke">吊销</string>
+    <string name="revoke_desc">吊销 %1$s</string>
+
+    <string name="copy">复制</string>
+    <string name="copied">已复制</string>
+
+    <string name="surfaces_title">命令通道</string>
+    <string name="sw_intents">intents（广播接收器）</string>
+    <string name="sw_http">本地 http 接口：%1$s/v1</string>
+    <string name="sw_mcp">mcp 服务器：%1$s/mcp</string>
+
+    <string name="bind_title">监听地址（http/mcp）</string>
+    <string name="address_fmt">地址：http://%1$s:%2$d</string>
+    <string name="lan_warning">已暴露在你的网络中，仅靠令牌保护。</string>
+
+    <string name="boot">开机时自动重启通道</string>
+
+    <string name="sw_master">启用 mimic（全部通道）</string>
+    <string name="auth">要求身份验证</string>
+    <string name="approval">启用细粒度授权</string>
+    <string name="overlay_state">悬浮窗权限：%1$s</string>
+    <string name="overlay_perm">授予悬浮窗权限</string>
+    <string name="prompt_title">mimic：允许这次操作吗？</string>
+    <string name="prompt_fmt">%1$s（%2$s）想要 %3$s %4$s。</string>
+    <string name="scope_once">仅这一次</string>
+    <string name="scope_this_app">记住（仅此应用）</string>
+    <string name="scope_all">记住（所有应用）</string>
+    <string name="prompt_allow">允许</string>
+    <string name="prompt_deny">拒绝</string>
+    <string name="prompt_allow_desc">mimic 允许该操作</string>
+    <string name="prompt_deny_desc">mimic 拒绝该操作</string>
+
+    <string name="mode_fmt">模式：%1$s</string>
+    <string name="mode_desc">模式 %1$s</string>
+    <string name="grant_row_fmt">%1$s %2$s %3$s</string>
+    <string name="no_grants">还没有授权记录</string>
+</resources>
