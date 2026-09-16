@@ -87,6 +87,15 @@ launch -> `package`,`component`,`action`,`uri`; packages -> `query`; screenshot 
 `format` (png|jpeg), `quality`, `scale`. `SET_TEXT` with no `by`/`query` targets the
 input-focused node.
 
+`display` (int, default 0) picks the display every read and gesture targets, so a
+secondary display -- e.g. a virtual display created through `DisplayManager` -- can
+be driven with the same commands. the root of a non-default display comes from that
+display's `AccessibilityWindowInfo.getRoot()`, not `getRootInActiveWindow(displayId)`
+(which does not resolve for a virtual display), and gestures carry the id through
+`GestureDescription.Builder.setDisplayId`. `LAUNCH` is the exception: starting an
+activity on a secondary display is refused for a normal app by
+`SafeActivityOptions`, so that still needs a privileged channel.
+
 `PACKAGES`, `LAUNCH`, and `STATUS` do not need the accessibility service; the rest
 do. launching uses the service (or app) context to `startActivity` and is subject
 to android background-activity-launch rules. `PACKAGES` lists launcher activities

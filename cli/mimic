@@ -222,7 +222,7 @@ pair_intents() {
 # view: dump the (filtered) tree.
 cmd_view() {
     need_token
-    _filter=; _format=; _depth=; _pkg=; _fields=
+    _filter=; _format=; _depth=; _pkg=; _fields=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --filter) _filter="$2"; shift 2 ;;
@@ -230,6 +230,7 @@ cmd_view() {
             --max-depth) _depth="$2"; shift 2 ;;
             --package) _pkg="$2"; shift 2 ;;
             --fields) _fields="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             *) die "dump: unknown option $1" ;;
         esac
     done
@@ -239,6 +240,7 @@ cmd_view() {
     [ -n "$_depth" ]  && set -- "$@" max_depth "$_depth"
     [ -n "$_pkg" ]    && set -- "$@" package "$_pkg"
     [ -n "$_fields" ] && set -- "$@" fields "$_fields"
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -246,7 +248,7 @@ cmd_find() {
     need_token
     _query="${1:-}"; [ -n "$_query" ] || die "usage: mimic find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--format ...] [--fields ...] [--filter ...] [--max-depth N] [--package P]"
     shift
-    _by=; _match=; _format=; _fields=; _depth=; _pkg=; _filter=
+    _by=; _match=; _format=; _fields=; _depth=; _pkg=; _filter=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --by) _by="$2"; shift 2 ;;
@@ -256,6 +258,7 @@ cmd_find() {
             --max-depth) _depth="$2"; shift 2 ;;
             --package) _pkg="$2"; shift 2 ;;
             --filter) _filter="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             *) die "find: unknown option $1" ;;
         esac
     done
@@ -267,6 +270,7 @@ cmd_find() {
     [ -n "$_depth" ]  && set -- "$@" max_depth "$_depth"
     [ -n "$_pkg" ]    && set -- "$@" package "$_pkg"
     [ -n "$_filter" ] && set -- "$@" filter "$_filter"
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -274,10 +278,11 @@ point_gesture() {
     _action="$1"; shift
     [ $# -ge 2 ] || die "usage: mimic <gesture> X Y [--duration MS]"
     _x="$1"; _y="$2"; shift 2
-    _dur=
-    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "unknown option $1" ;; esac; done
+    _dur=; _disp=
+    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; --display) _disp="$2"; shift 2 ;; *) die "unknown option $1" ;; esac; done
     set -- "$_action" x "$_x" y "$_y"
     [ -n "$_dur" ] && set -- "$@" duration "$_dur"
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -288,16 +293,17 @@ cmd_swipe() {
     need_token
     [ $# -ge 4 ] || die "usage: mimic swipe X1 Y1 X2 Y2 [--duration MS]"
     _x1="$1"; _y1="$2"; _x2="$3"; _y2="$4"; shift 4
-    _dur=
-    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; *) die "swipe: unknown option $1" ;; esac; done
+    _dur=; _disp=
+    while [ $# -gt 0 ]; do case "$1" in --duration) _dur="$2"; shift 2 ;; --display) _disp="$2"; shift 2 ;; *) die "swipe: unknown option $1" ;; esac; done
     set -- SWIPE x "$_x1" y "$_y1" x2 "$_x2" y2 "$_y2"
     [ -n "$_dur" ] && set -- "$@" duration "$_dur"
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
 cmd_click() {
     need_token
-    _by=; _query=; _match=; _x=; _y=
+    _by=; _query=; _match=; _x=; _y=; _disp=
     case "${1:-}" in
         --id) _by=id; _query="$2"; shift 2 ;;
         --text) _by=text; _query="$2"; shift 2 ;;
@@ -306,13 +312,14 @@ cmd_click() {
         *) [ $# -ge 2 ] || die "usage: mimic click X Y | --id ID | --text T [--match M]"
            _x="$1"; _y="$2"; shift 2 ;;
     esac
-    while [ $# -gt 0 ]; do case "$1" in --match) _match="$2"; shift 2 ;; *) die "click: unknown option $1" ;; esac; done
+    while [ $# -gt 0 ]; do case "$1" in --match) _match="$2"; shift 2 ;; --display) _disp="$2"; shift 2 ;; *) die "click: unknown option $1" ;; esac; done
     if [ -n "$_by" ]; then
         set -- CLICK by "$_by" query "$_query"
         [ -n "$_match" ] && set -- "$@" match "$_match"
     else
         set -- CLICK by coords x "$_x" y "$_y"
     fi
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -320,7 +327,7 @@ cmd_text() {
     need_token
     _value="${1:-}"; [ -n "$_value" ] || die "usage: mimic text VALUE [--id ID | --text T | --class C | --desc D] [--match M]"
     shift
-    _by=; _query=; _match=
+    _by=; _query=; _match=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --id) _by=id; _query="$2"; shift 2 ;;
@@ -328,6 +335,7 @@ cmd_text() {
             --class) _by=class; _query="$2"; shift 2 ;;
             --desc) _by=desc; _query="$2"; shift 2 ;;
             --match) _match="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             *) die "text: unknown option $1" ;;
         esac
     done
@@ -337,6 +345,7 @@ cmd_text() {
         [ -n "$_match" ] && set -- "$@" match "$_match"
     fi
     # no target -> the server types into the currently focused field.
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -351,7 +360,7 @@ cmd_scroll() {
         up|down|left|right) shift ;;
         *) die "usage: mimic scroll up|down|left|right [QUERY] [--by text|id|class|desc] [--match M] [--timeout S] [--steps N] [--package P] [--filter F]" ;;
     esac
-    _query=; _by=; _match=; _timeout=; _steps=; _pkg=; _filter=; _skip=
+    _query=; _by=; _match=; _timeout=; _steps=; _pkg=; _filter=; _skip=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --by) _by="$2"; shift 2 ;;
@@ -360,6 +369,7 @@ cmd_scroll() {
             --steps) _steps="$2"; shift 2 ;;
             --package) _pkg="$2"; shift 2 ;;
             --filter) _filter="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             --skip-visible) _skip=1; shift ;;
             -*) die "scroll: unknown option $1" ;;
             *) _query="$1"; shift ;;
@@ -374,6 +384,7 @@ cmd_scroll() {
     [ -n "$_pkg" ]     && set -- "$@" package "$_pkg"
     [ -n "$_filter" ]  && set -- "$@" filter "$_filter"
     [ -n "$_skip" ]    && set -- "$@" skip_visible true
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -382,7 +393,7 @@ cmd_wait() {
     need_token
     _query="${1:-}"; [ -n "$_query" ] || die "usage: mimic wait QUERY [--by text|id|class|desc] [--match exact|contains|regex] [--timeout SECONDS] [--package P] [--filter F]"
     shift
-    _by=; _match=; _timeout=; _pkg=; _filter=
+    _by=; _match=; _timeout=; _pkg=; _filter=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --by) _by="$2"; shift 2 ;;
@@ -390,6 +401,7 @@ cmd_wait() {
             --timeout) _timeout="$2"; shift 2 ;;
             --package) _pkg="$2"; shift 2 ;;
             --filter) _filter="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             *) die "wait: unknown option $1" ;;
         esac
     done
@@ -399,6 +411,7 @@ cmd_wait() {
     [ -n "$_timeout" ] && set -- "$@" timeout "$_timeout"
     [ -n "$_pkg" ]     && set -- "$@" package "$_pkg"
     [ -n "$_filter" ]  && set -- "$@" filter "$_filter"
+    [ -n "$_disp" ] && set -- "$@" display "$_disp"
     send "$@"
 }
 
@@ -452,12 +465,13 @@ cmd_launch() {
 # binary output, so it bypasses the json envelope path.
 cmd_screenshot() {
     need_token
-    _dest=; _format=png; _quality=; _scale=
+    _dest=; _format=png; _quality=; _scale=; _disp=
     while [ $# -gt 0 ]; do
         case "$1" in
             --format) _format="$2"; shift 2 ;;
             --quality) _quality="$2"; shift 2 ;;
             --scale) _scale="$2"; shift 2 ;;
+            --display) _disp="$2"; shift 2 ;;
             -*) die "screenshot: unknown option $1" ;;
             *) _dest="$1"; shift ;;
         esac
@@ -470,6 +484,7 @@ cmd_screenshot() {
         _body="{\"format\":\"$_format\""
         [ -n "$_quality" ] && _body="$_body,\"quality\":\"$_quality\""
         [ -n "$_scale" ] && _body="$_body,\"scale\":\"$_scale\""
+        [ -n "$_disp" ] && _body="$_body,\"display\":\"$_disp\""
         _body="$_body}"
         curl -sS -H "x-mimic-token: $TOKEN" -H 'content-type: application/json' \
             -X POST "http://$HOST/v1/screenshot" -d "$_body" -o "$_dest" 2>/dev/null
@@ -482,6 +497,7 @@ cmd_screenshot() {
         set -- broadcast -n "$COMPONENT" -a "${ACT_PREFIX}SCREENSHOT" --es token "$TOKEN" --es format "$_format"
         [ -n "$_quality" ] && set -- "$@" --es quality "$_quality"
         [ -n "$_scale" ] && set -- "$@" --es scale "$_scale"
+        [ -n "$_disp" ] && set -- "$@" --es display "$_disp"
         _dec=$(decode_output "$(run_am_argv "$@" 2>/dev/null || true)") || { rm -f "$_dest"; return 1; }
         case "$_dec" in
             *'"ok":true'*) printf '%s' "$_dec" | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | base64 -d > "$_dest" 2>/dev/null ;;
@@ -497,6 +513,14 @@ usage() {
 mimic -- drive the mimic service from a shell.
 transport: $TRANSPORT (http host $HOST; intents via $AM)
 
+common option (screen reads and input):
+  --display ID     target a secondary display instead of the default one. use it to
+                   read and drive a virtual display (0 = the main screen, the default).
+                   applies to dump/find/tap/longpress/swipe/click/text/scroll/wait/screenshot.
+                   NOTE: launch cannot target a display -- starting an activity on a
+                   secondary display is refused for a normal app by the framework
+                   (SafeActivityOptions), so that step still needs a privileged channel.
+
 setup (start pairing in the app first to get a code):
   mimic pair [CODE] [LABEL]   exchange a one-time code for a per-client token
   mimic set-token [TOKEN]     save a legacy token revealed in the app (manual path)
@@ -506,6 +530,7 @@ setup (start pairing in the app first to get a code):
 view (filter/query run on-device to keep output small):
   mimic dump [--filter interactive|text|visible|all] [--format tree|flat|compact]
             [--max-depth N] [--package PKG] [--fields class,text,desc,id,bounds,center,actions]
+            [--display ID]
   mimic find QUERY [--by text|id|class|desc] [--match exact|contains|regex] [+ dump opts]
 
 interact:

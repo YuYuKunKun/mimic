@@ -9,7 +9,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -133,26 +135,51 @@ class MimicService : AccessibilityService() {
 
     // ---- view ----
 
-    fun activeRoot(): AccessibilityNodeInfo? = rootInActiveWindow
+    // the root of the active window on `displayId`. the default display uses the
+    // plain rootInActiveWindow. for any other display the no-arg-style
+    // getRootInActiveWindow(displayId) returns null in practice (it does not
+    // resolve for a virtual display), so the root is taken from the display's own
+    // AccessibilityWindowInfo -- preferring the active window, else any window.
+    fun activeRoot(displayId: Int = Display.DEFAULT_DISPLAY): AccessibilityNodeInfo? =
+        if (displayId == Display.DEFAULT_DISPLAY) rootInActiveWindow
+        else displayRoot(displayId)
+
+    private fun displayRoot(displayId: Int): AccessibilityNodeInfo? {
+        val windows = windowsOnAllDisplays.get(displayId) ?: return null
+        for (w in windows) if (w.isActive) w.root?.let { return it }
+        for (w in windows) w.root?.let { return it }
+        return null
+    }
 
     // the node holding input focus -- the target when set-text is called without a
     // query, so text lands in whatever field is currently active.
-    fun focusedInput(): AccessibilityNodeInfo? =
-        activeRoot()?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+    fun focusedInput(displayId: Int = Display.DEFAULT_DISPLAY): AccessibilityNodeInfo? =
+        activeRoot(displayId)?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
     // ---- interact ----
 
-    fun tap(x: Int, y: Int, durationMs: Long): Boolean = dispatchPath(linePath(x, y, x, y), durationMs)
+    fun tap(x: Int, y: Int, durationMs: Long, displayId: Int = Display.DEFAULT_DISPLAY): Boolean =
+        dispatchPath(linePath(x, y, x, y), durationMs, displayId)
 
-    fun longPress(x: Int, y: Int, durationMs: Long): Boolean = dispatchPath(linePath(x, y, x, y), durationMs)
+    fun longPress(x: Int, y: Int, durationMs: Long, displayId: Int = Display.DEFAULT_DISPLAY): Boolean =
+        dispatchPath(linePath(x, y, x, y), durationMs, displayId)
 
-    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean =
-        dispatchPath(linePath(x1, y1, x2, y2), durationMs)
+    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long, displayId: Int = Display.DEFAULT_DISPLAY): Boolean =
+        dispatchPath(linePath(x1, y1, x2, y2), durationMs, displayId)
 
-    // the real size of the default display in pixels (width, height), used to
-    // derive scroll endpoints so a caller need not know the device resolution.
-    fun screenSize(): Pair<Int, Int> =
-        resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+    // the real size of `displayId` in pixels (width, height), used to derive scroll
+    // endpoints so a caller need not know the resolution. a secondary display has
+    // its own size, so this must follow the target display, not the service's.
+    @Suppress("DEPRECATION")
+    fun screenSize(displayId: Int = Display.DEFAULT_DISPLAY): Pair<Int, Int> {
+        if (displayId == Display.DEFAULT_DISPLAY)
+            return resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+        val display = getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
+            ?: return resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+        val point = Point()
+        display.getRealSize(point)
+        return point.x to point.y
+    }
 
     // scroll one step by dragging across the middle of the screen. the drag spans
     // SCROLL_FRACTION of the screen, centered, so it avoids the edge gestures and
@@ -161,16 +188,16 @@ class MimicService : AccessibilityService() {
     // finger moves up), "right" reveals content further right (the finger moves
     // left). it ends with a brief hold so the finger lifts at ~zero velocity and
     // the list does not fling past content. returns false for an unknown direction.
-    fun scroll(direction: String, durationMs: Long): Boolean {
-        val (w, h) = screenSize()
+    fun scroll(direction: String, durationMs: Long, displayId: Int = Display.DEFAULT_DISPLAY): Boolean {
+        val (w, h) = screenSize(displayId)
         val cx = w / 2; val cy = h / 2
         val dx = (w * Defaults.SCROLL_FRACTION / 2).toInt()
         val dy = (h * Defaults.SCROLL_FRACTION / 2).toInt()
         return when (direction) {
-            "down" -> dragHold(cx, cy + dy, cx, cy - dy, durationMs)
-            "up" -> dragHold(cx, cy - dy, cx, cy + dy, durationMs)
-            "right" -> dragHold(cx + dx, cy, cx - dx, cy, durationMs)
-            "left" -> dragHold(cx - dx, cy, cx + dx, cy, durationMs)
+            "down" -> dragHold(cx, cy + dy, cx, cy - dy, durationMs, displayId)
+            "up" -> dragHold(cx, cy - dy, cx, cy + dy, durationMs, displayId)
+            "right" -> dragHold(cx + dx, cy, cx - dx, cy, durationMs, displayId)
+            "left" -> dragHold(cx - dx, cy, cx + dx, cy, durationMs, displayId)
             else -> false
         }
     }
@@ -180,12 +207,13 @@ class MimicService : AccessibilityService() {
     // the content then moves exactly the dragged distance, which is what keeps a
     // scroll-until-found from skipping a row between steps. implemented as a
     // continued stroke: the move, then a same-point hold that finally lifts.
-    private fun dragHold(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
+    private fun dragHold(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long,
+                         displayId: Int = Display.DEFAULT_DISPLAY): Boolean {
         val move = GestureDescription.StrokeDescription(
             linePath(x1, y1, x2, y2), 0, durationMs.coerceAtLeast(1), true)
-        if (!dispatchSync(GestureDescription.Builder().addStroke(move).build())) return false
+        if (!dispatchSync(gesture(move, displayId))) return false
         val hold = move.continueStroke(linePath(x2, y2, x2, y2), 0, Defaults.SCROLL_HOLD_MS, false)
-        return dispatchSync(GestureDescription.Builder().addStroke(hold).build())
+        return dispatchSync(gesture(hold, displayId))
     }
 
     fun globalNav(nav: String): Boolean {
@@ -201,14 +229,14 @@ class MimicService : AccessibilityService() {
 
     // click a resolved node, climbing to a clickable ancestor and finally tapping
     // its center, so a non-clickable label inside a clickable row still works.
-    fun clickNode(node: AccessibilityNodeInfo): Boolean {
+    fun clickNode(node: AccessibilityNodeInfo, displayId: Int = Display.DEFAULT_DISPLAY): Boolean {
         var n: AccessibilityNodeInfo? = node
         while (n != null) {
             if (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
             n = n.parent
         }
         val r = Rect().also { node.getBoundsInScreen(it) }
-        return tap(r.centerX(), r.centerY(), Defaults.TAP_DURATION_MS)
+        return tap(r.centerX(), r.centerY(), Defaults.TAP_DURATION_MS, displayId)
     }
 
     fun setNodeText(node: AccessibilityNodeInfo, text: String): Boolean {
@@ -224,11 +252,12 @@ class MimicService : AccessibilityService() {
     // the framework callback. the system rate-limits this to about one per second.
     // requires android:canTakeScreenshot in the service config (api 30+).
     @SuppressLint("NewApi")
-    fun captureScreenshot(format: String, quality: Int, scale: Double): ByteArray? {
+    fun captureScreenshot(format: String, quality: Int, scale: Double,
+                          displayId: Int = Display.DEFAULT_DISPLAY): ByteArray? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val latch = CountDownLatch(1)
         val result = AtomicReference<ByteArray?>(null)
-        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+        takeScreenshot(displayId, mainExecutor, object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
                 try {
                     result.set(encode(screenshot, format, quality, scale))
@@ -274,9 +303,19 @@ class MimicService : AccessibilityService() {
         lineTo(x2.toFloat(), y2.toFloat())
     }
 
-    private fun dispatchPath(path: Path, durationMs: Long): Boolean =
-        dispatchSync(GestureDescription.Builder().addStroke(
-            GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1))).build())
+    private fun dispatchPath(path: Path, durationMs: Long,
+                             displayId: Int = Display.DEFAULT_DISPLAY): Boolean =
+        dispatchSync(gesture(
+            GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1)), displayId))
+
+    // every gesture carries its target display; omitting it would inject into the
+    // default display regardless of what the caller asked for.
+    private fun gesture(stroke: GestureDescription.StrokeDescription,
+                        displayId: Int): GestureDescription =
+        GestureDescription.Builder()
+            .addStroke(stroke)
+            .setDisplayId(displayId)
+            .build()
 
     // dispatch a gesture and block until the framework reports completion. the
     // caller runs on the receiver's async background thread, so the main-thread

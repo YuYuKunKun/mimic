@@ -80,11 +80,18 @@ everything and filtering locally:
 ```
 mimic status                          service enabled? which surfaces are on?
 
+common option (append to any screen read or input command):
+  --display ID    target a secondary display instead of the main screen (default 0).
+                  use it to read and drive a virtual display. applies to dump/find/
+                  tap/longpress/swipe/click/text/scroll/wait/screenshot.
+                  launch cannot target a display -- the framework refuses a normal
+                  app starting an activity on a secondary display.
+
 view (filtering/query run on-device):
   mimic dump [--filter interactive|text|visible|all]
             [--format tree|flat|compact]
             [--max-depth N] [--package PKG]
-            [--fields class,text,desc,id,bounds,center,actions]
+            [--fields class,text,desc,id,bounds,center,actions] [--display ID]
   mimic find QUERY [--by text|id|class|desc]
                   [--match exact|contains|regex]
                   [+ any dump option]

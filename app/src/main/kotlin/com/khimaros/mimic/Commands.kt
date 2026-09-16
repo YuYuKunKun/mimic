@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Base64
+import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
@@ -30,6 +31,12 @@ object Commands {
 
     private fun ok(data: Any?) = Result(true, data, null)
     private fun fail(message: String) = Result(false, null, message)
+
+    // the display a request targets: the default display unless the caller passed
+    // `display`. reads and gestures both follow it, so a secondary (e.g. virtual)
+    // display can be driven with the same commands as the main screen.
+    private fun displayOf(get: (String) -> String?): Int =
+        get(Extras.DISPLAY)?.toIntOrNull() ?: Display.DEFAULT_DISPLAY
 
     // run a short-named command (see Cmd). `get` resolves named arguments to
     // strings (intent extras, query params, json fields). throws nothing -- bad
@@ -92,7 +99,7 @@ object Commands {
             ?: get(Extras.COMPONENT)?.substringBefore('/')?.takeIf { it.isNotEmpty() }
             ?: "(intent)"
         ActionClass.PACKAGES -> Permissions.TARGET_ANY
-        else -> MimicService.instance?.activeRoot()?.packageName?.toString() ?: "(screen)"
+        else -> MimicService.instance?.activeRoot(displayOf(get))?.packageName?.toString() ?: "(screen)"
     }
 
     private fun targetLabel(target: String): String =
@@ -116,31 +123,34 @@ object Commands {
         return block(service)
     }
 
-    private fun dispatch(service: MimicService, action: String, get: (String) -> String?): Result = when (action) {
-        Cmd.DUMP, Cmd.FIND -> view(service, action, get)
-        Cmd.TAP -> performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS)))
-        Cmd.LONG_PRESS -> performed(service.longPress(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.LONG_PRESS_DURATION_MS)))
-        Cmd.SWIPE -> performed(service.swipe(int(get, Extras.X), int(get, Extras.Y), int(get, Extras.X2), int(get, Extras.Y2), dur(get, Defaults.SWIPE_DURATION_MS)))
-        Cmd.CLICK -> click(service, get)
-        Cmd.SET_TEXT -> setText(service, get)
-        Cmd.GLOBAL -> performed(service.globalNav(get(Extras.NAV) ?: ""))
-        Cmd.SCROLL -> scrollFor(service, get)
-        Cmd.WAIT -> waitFor(service, get)
-        Cmd.SCREENSHOT -> screenshot(service, get)
-        else -> fail("unknown command: $action")
+    private fun dispatch(service: MimicService, action: String, get: (String) -> String?): Result {
+        val d = displayOf(get)
+        return when (action) {
+            Cmd.DUMP, Cmd.FIND -> view(service, action, get, d)
+            Cmd.TAP -> performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS), d))
+            Cmd.LONG_PRESS -> performed(service.longPress(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.LONG_PRESS_DURATION_MS), d))
+            Cmd.SWIPE -> performed(service.swipe(int(get, Extras.X), int(get, Extras.Y), int(get, Extras.X2), int(get, Extras.Y2), dur(get, Defaults.SWIPE_DURATION_MS), d))
+            Cmd.CLICK -> click(service, get, d)
+            Cmd.SET_TEXT -> setText(service, get, d)
+            Cmd.GLOBAL -> performed(service.globalNav(get(Extras.NAV) ?: ""))
+            Cmd.SCROLL -> scrollFor(service, get, d)
+            Cmd.WAIT -> waitFor(service, get, d)
+            Cmd.SCREENSHOT -> screenshot(service, get, d)
+            else -> fail("unknown command: $action")
+        }
     }
 
-    private fun screenshot(service: MimicService, get: (String) -> String?): Result {
+    private fun screenshot(service: MimicService, get: (String) -> String?, displayId: Int): Result {
         val format = get(Extras.FORMAT) ?: Defaults.SCREENSHOT_FORMAT
         val quality = get(Extras.QUALITY)?.toIntOrNull() ?: Defaults.SCREENSHOT_QUALITY
         val scale = get(Extras.SCALE)?.toDoubleOrNull() ?: 1.0
-        val bytes = service.captureScreenshot(format, quality, scale)
+        val bytes = service.captureScreenshot(format, quality, scale, displayId)
             ?: return fail("screenshot failed (unsupported, rate-limited, or capture denied)")
         return ok(bytes)
     }
 
-    private fun view(service: MimicService, action: String, get: (String) -> String?): Result {
-        val root = service.activeRoot() ?: return fail("no active window")
+    private fun view(service: MimicService, action: String, get: (String) -> String?, displayId: Int): Result {
+        val root = service.activeRoot(displayId) ?: return fail("no active window")
         var cfg = ViewConfig.from(get)
         // FIND defaults to a flat match list unless an explicit format is given.
         if (action == Cmd.FIND && get(Extras.FORMAT) == null) cfg = cfg.copy(format = "flat")
@@ -149,7 +159,7 @@ object Commands {
 
     // poll the active window until a node matches the query, or the timeout. on
     // success returns the matches (like find); on timeout, a clear failure.
-    private fun waitFor(service: MimicService, get: (String) -> String?): Result {
+    private fun waitFor(service: MimicService, get: (String) -> String?, displayId: Int): Result {
         val query = get(Extras.QUERY)
         if (query.isNullOrEmpty()) return fail("wait needs a query (text/id/class/desc)")
         var cfg = ViewConfig.from(get)
@@ -157,7 +167,7 @@ object Commands {
         val timeoutMs = waitTimeoutMs(get)
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
-            val root = service.activeRoot()
+            val root = service.activeRoot(displayId)
             if (root != null && NodeTree.firstMatch(root, cfg) != null) return ok(NodeTree.render(root, cfg))
             if (System.currentTimeMillis() >= deadline)
                 return fail("wait: \"$query\" not found within ${"%.1f".format(timeoutMs / 1000.0)}s")
@@ -182,11 +192,11 @@ object Commands {
     // node matches (returning the matches like find/wait), stopping at the timeout,
     // a scroll cap, or when a scroll no longer changes the screen (end of content).
     // without a query, perform `steps` scrolls (default 1) and report performed.
-    private fun scrollFor(service: MimicService, get: (String) -> String?): Result {
+    private fun scrollFor(service: MimicService, get: (String) -> String?, displayId: Int): Result {
         val dir = (get(Extras.DIRECTION) ?: "").trim().lowercase()
         if (dir !in SCROLL_DIRS) return fail("scroll needs a direction: up | down | left | right")
         val query = get(Extras.QUERY)
-        if (query.isNullOrEmpty()) return scrollSteps(service, dir, get)
+        if (query.isNullOrEmpty()) return scrollSteps(service, dir, get, displayId)
 
         // the stop condition is an *on-screen* match. the accessibility tree can
         // include off-screen rows (e.g. a settings list), so match only visible
@@ -204,19 +214,19 @@ object Commands {
         var armed = !skipVisible
         var steps = 0
         while (true) {
-            val root = service.activeRoot()
+            val root = service.activeRoot(displayId)
             val match = root != null && NodeTree.firstMatch(root, cfg) != null
             if (!armed && !match) armed = true  // the starting matches have scrolled away
             if (armed && match) return ok(NodeTree.render(root, cfg))
             if (steps >= maxSteps || System.currentTimeMillis() >= deadline)
                 return fail("scroll $dir: \"$query\" not found after $steps scroll(s)")
             val before = root?.let { signature(it) } ?: ""
-            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS)) return fail("scroll failed (no scrollable view?)")
+            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS, displayId)) return fail("scroll failed (no scrollable view?)")
             steps++
             // wait for the tree to reflect the drag; if it never changes within the
             // window, the content did not move -- the end was reached. polling (vs a
             // fixed delay) tolerates a tree that updates slowly under load.
-            if (!awaitChange(service, before, Defaults.SCROLL_CHANGE_WINDOW_MS))
+            if (!awaitChange(service, before, Defaults.SCROLL_CHANGE_WINDOW_MS, displayId))
                 return fail("scroll $dir: \"$query\" not found; reached the end of the content")
         }
     }
@@ -228,19 +238,19 @@ object Commands {
 
     // poll until the screen differs from `before` (the drag moved content), or the
     // window elapses with no change (the content did not move -- the end).
-    private fun awaitChange(service: MimicService, before: String, windowMs: Long): Boolean {
+    private fun awaitChange(service: MimicService, before: String, windowMs: Long, displayId: Int): Boolean {
         val deadline = System.currentTimeMillis() + windowMs
         while (true) {
             Thread.sleep(Defaults.WAIT_POLL_MS)
-            if ((service.activeRoot()?.let { signature(it) } ?: "") != before) return true
+            if ((service.activeRoot(displayId)?.let { signature(it) } ?: "") != before) return true
             if (System.currentTimeMillis() >= deadline) return false
         }
     }
 
-    private fun scrollSteps(service: MimicService, dir: String, get: (String) -> String?): Result {
+    private fun scrollSteps(service: MimicService, dir: String, get: (String) -> String?, displayId: Int): Result {
         val steps = stepCount(get, 1)
         for (i in 0 until steps) {
-            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS)) return fail("scroll failed (no scrollable view?)")
+            if (!service.scroll(dir, Defaults.SCROLL_DURATION_MS, displayId)) return fail("scroll failed (no scrollable view?)")
             if (i < steps - 1) Thread.sleep(Defaults.SCROLL_SETTLE_MS)
         }
         return ok(JSONObject().put("performed", true).put("scrolled", steps))
@@ -260,30 +270,30 @@ object Commands {
         return service.activeRoot()?.packageName?.toString() == pkg
     }
 
-    private fun click(service: MimicService, get: (String) -> String?): Result {
+    private fun click(service: MimicService, get: (String) -> String?, displayId: Int): Result {
         val by = get(Extras.BY) ?: "coords"
-        if (by == "coords") return performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS)))
-        val node = resolve(service, get) ?: return fail("no node matched query")
-        return performed(service.clickNode(node))
+        if (by == "coords") return performed(service.tap(int(get, Extras.X), int(get, Extras.Y), dur(get, Defaults.TAP_DURATION_MS), displayId))
+        val node = resolve(service, get, displayId) ?: return fail("no node matched query")
+        return performed(service.clickNode(node, displayId))
     }
 
     // with a by/query, target the matching node; without one, target whatever node
     // currently holds input focus.
-    private fun setText(service: MimicService, get: (String) -> String?): Result {
+    private fun setText(service: MimicService, get: (String) -> String?, displayId: Int): Result {
         val text = get(Extras.TEXT) ?: return fail("missing text")
         val node = if (get(Extras.QUERY).isNullOrEmpty()) {
-            service.focusedInput() ?: return fail("no focused input; pass --id/--text to target a field")
+            service.focusedInput(displayId) ?: return fail("no focused input; pass --id/--text to target a field")
         } else {
-            resolve(service, get) ?: return fail("no node matched query")
+            resolve(service, get, displayId) ?: return fail("no node matched query")
         }
         return performed(service.setNodeText(node, text))
     }
 
     // locate the first node matching the by/query/match args in the active
     // window, fresh at call time (stateless interaction).
-    private fun resolve(service: MimicService, get: (String) -> String?): AccessibilityNodeInfo? =
+    private fun resolve(service: MimicService, get: (String) -> String?, displayId: Int): AccessibilityNodeInfo? =
         if (get(Extras.QUERY).isNullOrEmpty()) null
-        else NodeTree.firstMatch(service.activeRoot(), ViewConfig.from(get))
+        else NodeTree.firstMatch(service.activeRoot(displayId), ViewConfig.from(get))
 
     // list launchable apps (package, label, launcher component), optionally
     // filtered by a substring of either. only apps visible through the manifest

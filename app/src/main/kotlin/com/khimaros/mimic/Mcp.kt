@@ -134,30 +134,31 @@ object Mcp {
     private val DEPTH = prop("integer", "max tree depth (-1 = unlimited)")
     private val PACKAGE = prop("string", "restrict to one app package")
     private val FIELDS = prop("string", "comma list: class,text,desc,id,bounds,center,actions")
+    private val DISPLAY = prop("integer", "target display id (0 = the main screen, the default). set it to read or drive a secondary display, e.g. a virtual display")
 
     private val TOOLS: JSONArray = JSONArray(listOf(
         tool("mimic_status", "report whether the service is enabled and which surfaces are on", schema(emptyList(), emptyMap())),
         tool("mimic_dump", "dump the active window node tree; filter on-device to keep output small",
-            schema(emptyList(), mapOf("filter" to FILTER, "format" to FORMAT, "max_depth" to DEPTH, "package" to PACKAGE, "fields" to FIELDS))),
+            schema(emptyList(), mapOf("filter" to FILTER, "format" to FORMAT, "max_depth" to DEPTH, "package" to PACKAGE, "fields" to FIELDS, "display" to DISPLAY))),
         tool("mimic_find", "find nodes matching a query; returns a flat match list by default",
             schema(listOf("query"), mapOf(
                 "query" to prop("string", "the text/id/class/desc to match"),
-                "by" to BY, "match" to MATCH, "format" to FORMAT, "fields" to FIELDS, "filter" to FILTER, "max_depth" to DEPTH, "package" to PACKAGE))),
+                "by" to BY, "match" to MATCH, "format" to FORMAT, "fields" to FIELDS, "filter" to FILTER, "max_depth" to DEPTH, "package" to PACKAGE, "display" to DISPLAY))),
         tool("mimic_tap", "tap at screen coordinates",
-            schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms")))),
+            schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms"), "display" to DISPLAY))),
         tool("mimic_long_press", "long press at screen coordinates",
-            schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms")))),
+            schema(listOf("x", "y"), mapOf("x" to prop("integer", "x px"), "y" to prop("integer", "y px"), "duration" to prop("integer", "ms"), "display" to DISPLAY))),
         tool("mimic_swipe", "swipe from (x,y) to (x2,y2)",
             schema(listOf("x", "y", "x2", "y2"), mapOf(
                 "x" to prop("integer", "start x"), "y" to prop("integer", "start y"),
-                "x2" to prop("integer", "end x"), "y2" to prop("integer", "end y"), "duration" to prop("integer", "ms")))),
+                "x2" to prop("integer", "end x"), "y2" to prop("integer", "end y"), "duration" to prop("integer", "ms"), "display" to DISPLAY))),
         tool("mimic_click", "click a node found by text/id/class/desc, or tap coordinates (by=coords)",
             schema(emptyList(), mapOf(
                 "by" to prop("string", "coords | text | id | class | desc", listOf("coords", "text", "id", "class", "desc")),
                 "query" to prop("string", "value to match when by is not coords"),
-                "x" to prop("integer", "x px when by=coords"), "y" to prop("integer", "y px when by=coords"), "match" to MATCH))),
+                "x" to prop("integer", "x px when by=coords"), "y" to prop("integer", "y px when by=coords"), "match" to MATCH, "display" to DISPLAY))),
         tool("mimic_set_text", "set the text of an editable node located by text/id/class/desc; with no by/query, type into the currently focused field",
-            schema(listOf("text"), mapOf("text" to prop("string", "text to enter"), "by" to BY, "query" to prop("string", "value to match (omit to target the focused field)"), "match" to MATCH))),
+            schema(listOf("text"), mapOf("text" to prop("string", "text to enter"), "by" to BY, "query" to prop("string", "value to match (omit to target the focused field)"), "match" to MATCH, "display" to DISPLAY))),
         tool("mimic_global", "perform a global navigation action",
             schema(listOf("nav"), mapOf("nav" to prop("string", "back | home | recents | notifications", listOf("back", "home", "recents", "notifications"))))),
         tool("mimic_scroll", "scroll the active window in a direction; with a query, keep scrolling until a node matching it is visible on screen (returns the visible matches), stopping at the end of the content or the timeout",
@@ -167,12 +168,12 @@ object Mcp {
                 "by" to BY, "match" to MATCH, "filter" to FILTER, "package" to PACKAGE,
                 "steps" to prop("integer", "max scrolls with a query, or exact scrolls without one (default 1)"),
                 "skip_visible" to prop("boolean", "ignore matches already on screen; keep scrolling to the next occurrence in this direction"),
-                "timeout" to prop("number", "seconds to keep scrolling for a match (default 10)")))),
+                "timeout" to prop("number", "seconds to keep scrolling for a match (default 10)"), "display" to DISPLAY))),
         tool("mimic_wait", "wait until a node matching the query appears in the active window (polls); returns the matches, or fails on timeout",
             schema(listOf("query"), mapOf(
                 "query" to prop("string", "the text/id/class/desc to wait for"),
                 "by" to BY, "match" to MATCH, "filter" to FILTER, "package" to PACKAGE,
-                "timeout" to prop("number", "seconds to wait (default 10)")))),
+                "timeout" to prop("number", "seconds to wait (default 10)"), "display" to DISPLAY))),
         tool("mimic_packages", "list launchable apps as {package, label, component}; optionally filter by a substring of either. the component can be passed straight to mimic_launch",
             schema(emptyList(), mapOf(
                 "query" to prop("string", "filter by package or label substring"),
@@ -189,6 +190,6 @@ object Mcp {
             schema(emptyList(), mapOf(
                 "format" to prop("string", "png | jpeg", listOf("png", "jpeg")),
                 "quality" to prop("integer", "jpeg quality 1-100"),
-                "scale" to prop("number", "downscale factor 0-1")))),
+                "scale" to prop("number", "downscale factor 0-1"), "display" to DISPLAY))),
     ))
 }

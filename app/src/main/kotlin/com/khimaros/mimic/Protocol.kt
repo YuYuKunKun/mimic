@@ -123,6 +123,10 @@ object Extras {
     const val Y2 = "y2"
     const val DURATION = "duration"
 
+    // target display. 0 (the default) is the main screen; any other id addresses a
+    // secondary display (e.g. a virtual display created via DisplayManager).
+    const val DISPLAY = "display"
+
     // misc
     const val TEXT = "text"            // SET_TEXT payload
     const val NAV = "nav"              // GLOBAL: back | home | recents | notifications
